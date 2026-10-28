@@ -16,6 +16,7 @@ dune exec bin/fuzzycaml.exe -- [--sample] [--ox] [TEST_CASES]
 Environment variables:
 - `FUZZYCAML_SWITCHES=a,b`: use only these opam switches.
 - `FUZZYCAML_EXTRA="name=compiler flags;..."`: add backends.
+- `FUZZYCAML_DATABASE=dir`: save failures in Hegel's database at `dir`, so a later run replays them first.
 - `FUZZYCAML_SAVE=dir`: write programs that hit a known bug to `dir/known<pid>-<n>.ml`.
 - `FUZZYCAML_FIXED_OCLASSIC=<ocamlopt>`: a compiler with the flambda `-Oclassic` constant field fix (see Known bugs).
 

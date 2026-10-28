@@ -9,8 +9,6 @@ type ctx =
   ; used : (string, unit) Hashtbl.t (* variables the program refers to so far *)
   }
 
-let label = Generators.Ppx_internal.Labels.from_name "fuzzycaml.expr"
-
 let fresh ctx prefix =
   ctx.next <- ctx.next + 1;
   Printf.sprintf "%s%d" prefix ctx.next
@@ -31,7 +29,10 @@ let unused ctx vars = List.filter (fun (x, _) -> not (Hashtbl.mem ctx.used x)) v
 (* Parenthesises a negative literal. *)
 let paren s = if String.length s > 0 && s.[0] = '-' then p "(%s)" s else s
 
-let span ctx f =
+(* Spans with the same name are what the shrinker swaps for one another, so
+   expressions are named by their type. *)
+let span ?(name = "fuzzycaml.repeat") ctx f =
+  let label = Generators.Ppx_internal.Labels.from_name name in
   draw_silent ctx.tc (Generators.Ppx_internal.composite_with_label ~label (fun _ -> f ()))
 ;;
 

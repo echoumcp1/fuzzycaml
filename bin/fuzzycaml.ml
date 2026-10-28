@@ -17,7 +17,11 @@ let () =
   let settings =
     { (Settings.create ~test_cases ()) with
       suppress_health_check = [ Too_slow; Test_cases_too_large; Large_initial_test_case ]
-    ; database = Disabled
+    ; database =
+        (* FUZZYCAML_DATABASE=dir keeps failures, so a later run replays them. *)
+        (match Sys.getenv_opt "FUZZYCAML_DATABASE" with
+         | Some dir -> Path dir
+         | None -> Disabled)
     }
   in
   if sample
@@ -39,5 +43,5 @@ let () =
         !known);
     let effect_syntax = effect_syntax ~ox backends in
     Printf.printf "effect syntax: %b\n%!" effect_syntax;
-    run_hegel_test ~settings (check ~ox ~effect_syntax backends))
+    run_hegel_test ~settings ~database_key:"fuzzycaml" (check ~ox ~effect_syntax backends))
 ;;

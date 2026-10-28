@@ -9,7 +9,7 @@ open Specific
 open Generic
 
 let rec expr ctx env ty depth =
-  span ctx (fun () ->
+  span ~name:("fuzzycaml.expr " ^ show_ty ty) ctx (fun () ->
     let e env t = expr ctx env t (depth - 1) in
     let vars = List.filter (fun (_, t) -> t = ty) (env.vars @ env.muts) in
     let unused = unused ctx vars in
