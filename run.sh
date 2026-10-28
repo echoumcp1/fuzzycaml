@@ -17,9 +17,13 @@ end=$(( $(date +%s) + hours * 3600 ))
 for w in $(seq 1 $workers); do
   ( i=0; while [ $(date +%s) -lt $end ] && [ ! -e $L/stop ]; do i=$((i+1))
       cd $root || exit 1
-      FUZZYCAML_SAVE=$L/known FUZZYCAML_DATABASE=$L/db/w$w-$i $L/fuzz.exe "$@" 1000000 > $L/w$w-$i.log 2>&1
+      FUZZYCAML_SAVE=$L/known FUZZYCAML_DATABASE=$L/db/w$w-$i $L/fuzz.exe "$@" 1000000 > $L/w$w-$i.log 2>&1 &
+      echo "$! $L/w$w-$i.log" > $L/w$w.pid; wait $!
     done ) &
 done
-# shortcut: SIGTERM skips the fuzzer's at_exit summary, so the last log of each worker has no "ran N" line
 while [ $(date +%s) -lt $end ] && [ ! -e $L/stop ]; do sleep 10; done
-pkill -f "$L/fuzz.exe"; wait; rm -f $L/run.pid
+# a fuzzer that has printed a failure is shrinking it, so it may finish unless the run was stopped
+for f in $L/w*.pid(N); do read pid log < $f; grep -q '^--- ' $log || kill $pid 2>/dev/null; done
+while pgrep -f "$L/fuzz.exe" > /dev/null && [ ! -e $L/stop ]; do sleep 10; done
+# shortcut: SIGTERM skips the fuzzer's at_exit summary, so the last log of each worker has no "ran N" line
+pkill -f "$L/fuzz.exe"; wait; rm -f $L/run.pid $L/w*.pid(N)

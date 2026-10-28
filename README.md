@@ -29,7 +29,7 @@ FUZZYCAML_EXTRA="ocaml-5.5.1/ocamlc=$(opam var --switch ocaml-5.5.1 bin)/ocamlc 
 ./watch.sh <dir>
 ```
 
-`run.sh` copies the built binary to `<dir>/fuzz.exe` and starts `<workers>` fuzzers. Each fuzzer stops at its first failure and is restarted. The run ends after `<hours>` or when `<dir>/stop` exists. To update the fuzzers during a run, `mv` a new binary over `<dir>/fuzz.exe`; workers pick it up when they restart.
+`run.sh` copies the built binary to `<dir>/fuzz.exe` and starts `<workers>` fuzzers. Each fuzzer stops at its first failure and is restarted. The run ends after `<hours>` or when `<dir>/stop` exists. When time is up, fuzzers that are shrinking a failure are left to finish; `stop` ends them too. To update the fuzzers during a run, `mv` a new binary over `<dir>/fuzz.exe`; workers pick it up when they restart.
 
 Output in `<dir>`:
 ```
