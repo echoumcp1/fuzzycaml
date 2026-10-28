@@ -16,7 +16,7 @@ let fresh ctx prefix =
 
 let int_in ctx lo hi = draw_silent ctx.tc (integers ~min_value:lo ~max_value:hi ())
 let flip ?p ctx = draw_silent ctx.tc (booleans ?p ())
-let pick ctx l = List.nth l (int_in ctx 0 (List.length l - 1))
+let pick ctx l = draw_silent ctx.tc (sampled_from l)
 let choose ctx options = pick ctx options ()
 
 (* The declarations with their indices. *)
