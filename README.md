@@ -34,6 +34,7 @@ FUZZYCAML_EXTRA="ocaml-5.5.1/ocamlc=$(opam var --switch ocaml-5.5.1 bin)/ocamlc 
 Output in `<dir>`:
 ```
 w<w>-<i>.log   log of worker w's i-th fuzzer; a failure ends with the shrunk program
+db/w<w>-<i>/   its Hegel database, which keeps the failure even if the log is cut short
 known/         programs that hit known bugs
 fuzz.exe       the binary the workers run
 stop           create this file to stop the run
