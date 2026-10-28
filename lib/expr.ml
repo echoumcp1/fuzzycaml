@@ -60,8 +60,8 @@ let rec expr ctx env ty depth =
           (fun (x, t) -> t <> ty && first_order t && not (Hashtbl.mem ctx.used x))
           env.vars
       in
-      (* Favour the operations on [ty] over the structural forms, so values
-         are computed with rather than only passed around. *)
+      (* Prefer operations on [ty] over structural forms, so values are computed
+         and not only passed around. *)
       let p_specific =
         match ty with
         | Int | Bool | Float | Char | Int64 | Str | List _ | Num _ | U _ | Arr _ -> 0.7
@@ -69,7 +69,7 @@ let rec expr ctx env ty depth =
       in
       match other with
       | (x, t) :: _ when draw_silent ctx.tc (booleans ~p:0.3 ()) ->
-        (* the newest unused variable of another type, so it is not left dead *)
+        (* use the newest unused variable of another type *)
         p "(if %s = %s then %s else %s)" (use (x, t)) (literal ctx t) (e env ty) (e env ty)
       | _ ->
       if !ox_mode && immediate ty && on "locals" && draw_silent ctx.tc (booleans ~p:0.15 ())

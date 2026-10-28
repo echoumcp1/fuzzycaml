@@ -24,7 +24,7 @@ let span ctx f =
   draw_silent ctx.tc (Generators.Ppx_internal.composite_with_label ~label (fun _ -> f ()))
 ;;
 
-(* Between lo and hi elements, each past lo behind a continue bit and each in
+(* Between lo and hi elements. Each one past lo is behind a continue bit and in
    its own span, so the shrinker can delete any one of them. *)
 let repeat ctx lo hi f =
   let rec go i =

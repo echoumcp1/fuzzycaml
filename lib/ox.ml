@@ -6,9 +6,9 @@ open Gen_ty
 open Literal
 open Env
 
-(* [let local_ x = ... in body]: the value is either an ordinary one, a
-   [stack_] allocation, or one a helper allocates in its caller's region with
-   [exclave_]. The body's type is immediate, so no local escapes through it. *)
+(* [let local_ x = ... in body], where the value is ordinary, a [stack_]
+   allocation, or allocated by a helper in the caller's region with [exclave_].
+   The body's type is immediate, so no local escapes. *)
 let local_binding ctx env ty e =
   let s =
     match any_ty ctx with
@@ -66,9 +66,9 @@ let local_binding ctx env ty e =
   p "(let local_ %s : %s = %s in %s)" x (show_ty s) source (e (bind_local env x s) ty)
 ;;
 
-(* OxCaml forms for any type: taking apart an unboxed tuple or an or_null,
-   reading an array at an index kept in bounds, and a [let mutable] updated
-   in a loop. *)
+(* OxCaml forms at any type: destructuring an unboxed tuple or an or_null,
+   reading an array at an in-bounds index, and a [let mutable] updated in a
+   loop. *)
 let ox_forms ctx env ty e =
   (if on "utuples"
    then

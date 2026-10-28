@@ -36,8 +36,8 @@ let declaration ?parent i decl =
   | Record fields ->
     let field (f, t, m) = p "%s%s : %s" (if m then "mutable " else "") f (show_ty t) in
     let show (f, t, _) = p {|"%s = " ^ %s v.%s|} f (printer t) f in
-    (* OxCaml requires a record of only boxed and unboxed floats to say how it
-       is laid out. *)
+    (* OxCaml requires a layout attribute on records of only boxed and unboxed
+       floats. *)
     let has t = List.exists (fun (_, t', _) -> t' = t) fields in
     let flatten =
       if

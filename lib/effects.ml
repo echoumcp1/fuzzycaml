@@ -19,9 +19,9 @@ let handler_setup ctx env =
   handled, b, catch, { env with effs = handled @ env.effs; in_try = env.in_try || catch }
 ;;
 
-(* A handler arm for an effect with argument [a] and result [r]: it resumes the
-   body, resumes it and then works on its result, drops the continuation, or
-   (inside a try, if [discontinue]) raises Exit at the perform. *)
+(* A handler arm for an effect with argument [a] and result [r]. It resumes the
+   body, resumes it and uses the result, drops the continuation, or (inside a
+   try, if [discontinue]) raises Exit at the perform. *)
 let arm ctx env ty e ~resume ~discontinue (_, a, r) =
   let v = fresh ctx "v" in
   let k = fresh ctx "k" in
@@ -88,7 +88,8 @@ let handler ctx env ty e =
     (String.concat " " (List.map arm handled))
 ;;
 
-(* A shallow handler: [go] resumes the fiber under the same handler each time. *)
+(* A shallow handler. [go] resumes the fiber under the same handler each time.
+   *)
 let shallow ctx env ty e =
   let handled, b, catch, body_env = handler_setup ctx env in
   let go = fresh ctx "go" in

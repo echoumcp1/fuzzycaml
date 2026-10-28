@@ -5,7 +5,7 @@ open Gen_ty
 open Env
 
 (* A local function with positional, labelled and optional parameters, applied
-   in one go or a few arguments at a time. *)
+   all at once or in several steps. *)
 let partial ctx env ty e =
   let f = fresh ctx "f" in
   let n = int_in ctx 1 4 in
@@ -106,7 +106,7 @@ let atomic_op ctx env a ty e =
     let x = fresh ctx "c" and y = fresh ctx "c" in
     p "(let %s = %s in let %s = %s in Atomic.compare_and_set %s %s %s)" x seen y v a x y
   in
-  (* the old value stays live, so it can be spilled across the use *)
+  (* keeps the old value live, so it may be spilled *)
   let keep_old op v =
     let o = fresh ctx "old" in
     p "(let %s = %s %s %s in ignore (Sys.opaque_identity %s))" o op a v (e (bind env o ty) ty)
@@ -137,9 +137,8 @@ let atomic_op ctx env a ty e =
      | _ -> [])
 ;;
 
-(* An atomic only this expression can see, updated in a loop and then read.
-   It holds an int or a bool, so compare_and_set's physical equality is the
-   same on every backend. *)
+(* A local atomic, updated in a loop and then read. It holds an int or a bool,
+   so compare_and_set's physical equality behaves the same on every backend. *)
 let local_atomic ctx env ty e =
   let a = fresh ctx "at" in
   let i = fresh ctx "i" in
@@ -199,7 +198,8 @@ let lazy_value ctx env ty e =
   let s = from_env ctx env (fun t -> if restricted t then None else Some t) (fun () -> any_ty ctx) in
   let l = fresh ctx "lz" in
   let x = fresh ctx "x" in
-  (* An effect could leave a lazy mid-force for good, so none happens inside. *)
+  (* No effect is performed inside a lazy, since it could leave the lazy
+     unfinished. *)
   let body = e { (escape env) with in_try = env.in_try } s in
   choose
     ctx
@@ -222,7 +222,7 @@ let rec_value ctx env ty e =
   let body env = e (bind (closure env) n Int) ty in
   [ (fun () ->
       let l = fresh ctx "lz" in
-      (* as in [lazy_value], no effect happens inside the lazy *)
+      (* no effect inside the lazy, as in [lazy_value] *)
       p
         "(let rec %s : %s Lazy.t = lazy %s and %s : int -> %s = fun %s -> if %s <= 0 \
          then Lazy.force %s else %s (%s - 1) in %s (%s land 7))"
@@ -307,7 +307,8 @@ let rec_value ctx env ty e =
   | _ -> []
 ;;
 
-(* A [@tail_mod_cons] list builder, its recursive call under a constructor. *)
+(* A [@tail_mod_cons] list builder with its recursive call under a constructor.
+   *)
 let tmc ctx env t e =
   let go = fresh ctx "go" in
   let n = fresh ctx "n" in

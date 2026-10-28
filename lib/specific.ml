@@ -368,8 +368,8 @@ let specific ctx env ty e =
                       (String.concat "; " (List.map (fun (f, _, _) -> p "%s = %s.#u%s" f s f) fields))))
            !twins
        @
-       (* Only a record the expression itself allocates is mutated, and only
-          before it is returned, so no other expression can observe it. *)
+       (* Only a record the expression allocates is mutated, and only before it
+          is returned. *)
        (match List.filter (fun (_, _, m) -> m) fields with
          | [] -> []
          | mutables ->

@@ -46,7 +46,7 @@ let many_args ctx env ty e =
   in
   let env = closure env in
   let inner = List.fold_left (fun env (x, t) -> bind env x t) (bind env n Int) params in
-  (* recursive calls mostly pass parameters along, which keeps programs small *)
+  (* recursive calls mostly pass parameters through, to keep programs small *)
   let arg env t =
     let same = List.filter (fun (_, t') -> t' = t) params in
     if env != inner || same = [] || draw_silent ctx.tc (booleans ~p:0.3 ())
@@ -81,8 +81,8 @@ let many_args ctx env ty e =
     outer
 ;;
 
-(* Fresh allocations live across a collection, then used: the collector must
-   find each one wherever the backend keeps it. *)
+(* Fresh allocations live across a collection and are used afterwards, so the GC
+   must find them wherever the backend keeps them. *)
 let gc ctx env ty e =
   let vars = List.init (int_in ctx 2 6) (fun _ -> fresh ctx "g", fo_ty ctx) in
   p
@@ -98,7 +98,7 @@ let gc ctx env ty e =
     (e (List.fold_left (fun env (x, t) -> bind env x t) env vars) ty)
 ;;
 
-(* A read of a string at an offset its padding keeps in bounds. *)
+(* A string read at an offset inside the string's padding. *)
 let str_load ctx env e ty =
   let s = fresh ctx "s" in
   let off = p "((%s land max_int) mod (String.length %s + 1))" (e env Int) s in

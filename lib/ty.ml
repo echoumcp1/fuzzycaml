@@ -12,9 +12,9 @@ type ty =
   | Pair of ty * ty
   | Arrow of ty * ty
   | Named of int
-  (* OxCaml only. The unboxed ones (U, UTuple, Or_null and unboxed records)
-     are only ever bound, passed, returned or stored in a record, tuple or
-     array that allows them, never inside a list, option or pair. *)
+  (* OxCaml only. Unboxed values (U, UTuple, Or_null and unboxed records) are
+     only bound, passed, returned or stored in a record, tuple or array that
+     allows them, never in a list, option or pair. *)
   | Num of nb
   | U of ub
   | UTuple of ty list
@@ -107,9 +107,9 @@ let boxed_of = function
 let all_nb = [ I8; I16; I32; Nat; F32 ]
 let all_ub = [ UF; UF32; UI; UI8; UI16; UI32; UI64; UNat ]
 
-(* Number conversions are externals declared ahead of the program as it uses
-   them; float-to-integer ones saturate, since out of range they are
-   unspecified. *)
+(* Number conversions are externals, declared at the top of the program as they
+   are used. Float-to-integer conversions saturate, since out-of-range results
+   are unspecified. *)
 let convs = ref []
 
 let conv_ext a b =
@@ -153,7 +153,8 @@ let rec show_ty = function
 ;;
 
 
-(* float32's polymorphic comparison of NaNs is left out. *)
+(* float32 is not first-order, to avoid polymorphic comparison of float32 NaNs.
+   *)
 let rec first_order = function
   | Int | Bool | Float | Char | Int64 | Str | Num (I8 | I16 | I32 | Nat) -> true
   | Named i -> not !mixed.(i)

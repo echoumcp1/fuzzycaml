@@ -2,7 +2,7 @@
 fuzzycaml generates random OCaml programs, compiles and runs them with several compilers and flag sets, and reports compilation failures, crashes, and output mismatches. Failing programs are shrunk with Hegel before they are reported.
 
 # How to use
-You need the `hegel` opam package and the libhegel shared library (set `HEGEL_LIBHEGEL_PATH` if it is not found automatically).
+You need the `hegel` opam package and the libhegel shared library (set `HEGEL_LIBHEGEL_PATH` if it is not found).
 
 ```
 dune build
@@ -43,7 +43,12 @@ stop           create this file to stop the run
 # Layout
 
 ```
-bin/fuzzycaml.ml   driver: finds backends, compiles and runs programs, compares results, filters known bugs
+bin/fuzzycaml.ml   command line
+lib/backend.ml     backend discovery
+lib/exec.ml        compiling and running programs on every backend
+lib/toggles.ml     the toggles backend's flags
+lib/known.ml       known bug filters
+lib/check.ml       checking one program
 lib/config.ml      global state: OxCaml mode, enabled features, properties of declared types
 lib/ty.ml          types, number conversions, type predicates
 lib/printer.ml     value printers and type declarations
@@ -66,7 +71,7 @@ run.sh, watch.sh   long runs
 ```
 
 # Generated programs
-Programs are well typed, terminate, and have fully specified output:
+Programs are well typed, terminate, and have deterministic output:
 - Subexpressions with effects are let-bound, since evaluation order is unspecified.
 - NaNs print as `nan`, and `compare` results go through `sgn`.
 - Division, `mod` and `String.sub` go through total helpers in the prelude. Loop bounds and recursion counters are masked.

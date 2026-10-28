@@ -15,8 +15,8 @@ open Forms
 let generic ctx env ty e =
   let fo = first_order ty in
   let value = not (restricted ty) in
-  (* A scrutinee of type [s]: sometimes a local, whose components are then
-     local too. *)
+  (* A scrutinee of type [s], sometimes a local (whose components are then also
+     local). *)
   let scrutinee env s =
     match List.filter (fun (_, t) -> t = s) env.locals with
     | locals when locals <> [] && draw_silent ctx.tc (booleans ~p:0.6 ()) ->
@@ -184,8 +184,8 @@ let generic ctx env ty e =
           p "%s, %s" (e env a) (e env b)
         | Named k
           when (not local) && List.mem_assoc k variants && draw_silent ctx.tc (booleans ~p:0.3 ()) ->
-          (* match-in-match: the inner match's opaque input hides which
-             constructor comes out, but each arm builds a known one. *)
+          (* match-in-match: the inner match's input is opaque, so its result
+             constructor is unknown, but each arm builds a known one. *)
           let outs = List.assoc k variants in
           let j, ins = List.nth variants (int_in ctx 0 (List.length variants - 1)) in
           let off = int_in ctx 0 (List.length outs - 1) in
@@ -219,8 +219,8 @@ let generic ctx env ty e =
         let x = fresh ctx "m" in
         p "(match %s with %s | %s -> %s)" v arms x (e (bind_part local env x s) ty))
       else
-        (* Without a catch-all the match may fail; the handler right around it
-           keeps Match_failure from meeting another exception. *)
+        (* Without a catch-all the match may fail, so a Match_failure handler
+           goes around it. *)
         p "(try (match %s with %s) with Match_failure _ -> %s)" v arms (e env ty))
   ]
   @ (if not value
@@ -318,7 +318,7 @@ let generic ctx env ty e =
   @ (if value && on "manyargs" then [ (fun () -> many_args ctx env ty e) ] else [])
   @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty e) ] else [])
   @ boost (if value && on "exns" then [ (fun () -> local_exn ctx env ty e) ] else [])
-  (* Both branches the same, so the join of their values is exact. *)
+  (* Both branches are equal, so the optimiser can join them. *)
   @ boost
       (if on "samebranch"
        then [ (fun () -> let c = e env Bool in let a = e env ty in p "(if %s then %s else %s)" c a a) ]

@@ -1,8 +1,8 @@
 open Config
 
-(* NaN's sign is not preserved consistently by constant folding, so all NaNs
-   print alike; compare promises only a sign, which flambda folds to the
-   difference of chars, so its result goes through sgn. *)
+(* Constant folding does not preserve NaN's sign, so all NaNs print as nan.
+   compare only specifies the sign (flambda folds it to the difference of
+   chars), so its result goes through sgn. *)
 let prelude () =
   {|let show_float f = if Float.is_nan f then "nan" else Printf.sprintf "%h" f
 let sdiv a b = if b = 0 then a else a / b

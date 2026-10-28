@@ -39,8 +39,8 @@ let rec float_literal ctx =
     ; (fun () -> p "(Int64.float_of_bits %s)" (float_bits ctx))
     ]
 
-(* Bit patterns at the edges: subnormals, the largest finite value, powers of
-   two a bit off, and NaNs with payloads. *)
+(* Edge-case bit patterns: subnormals, the largest finite value, powers of two
+   one ulp off, and NaNs with payloads. *)
 and float_bits ctx =
   let edge =
     [ 1L; 0x000fffffffffffffL; 0x0010000000000000L; 0x7fefffffffffffffL; 0x7ff0000000000000L
@@ -66,8 +66,8 @@ let float32_bits ctx =
   if Int32.compare bits 0l < 0 then p "(%ldl)" bits else p "%ldl" bits
 ;;
 
-(* A literal of a new number type: an integer in its range or a float32,
-   unboxed with # when the syntax allows and by conversion otherwise. *)
+(* A literal of a newer number type: an integer in its range or a float32,
+   unboxed with # where the syntax allows and by conversion otherwise. *)
 let num_literal ctx t =
   let w = width t in
   let int_value () =
@@ -207,7 +207,8 @@ and construct c = function
   | args -> p "(%s (%s))" c (String.concat ", " args)
 ;;
 
-(* [raise Exit] at any type; raise itself only returns a value. *)
+(* [raise Exit] at any type. raise only has value types, so unboxed results are
+   built around it. *)
 let rec raise_at ctx ty =
   match ty with
   | U UF -> "(unbox_float (raise Exit))"

@@ -1,0 +1,121 @@
+open Hegel
+open Backend
+open Exec
+open Toggles
+open Known
+
+let cases = ref 0
+let timeouts = ref 0
+let known = ref 0
+
+(* After the first failure, only the reference and the first differing backend
+   are run, to make shrinking faster. *)
+let focus = ref None
+
+let fail backends results msg =
+  let text = msg ^ report backends results in
+  if !focus = None
+  then (
+    prerr_endline text;
+    let ref_obs = observable (List.hd results) in
+    let odd =
+      List.find_opt (fun i -> observable (List.nth results i) <> ref_obs)
+        (List.init (List.length results - 1) succ)
+    in
+    focus := Some (0 :: Option.to_list odd));
+  failwith text
+;;
+
+let check ~ox ~effect_syntax backends tc =
+  let backends =
+    match !focus with
+    | None -> backends
+    | Some keep -> List.filteri (fun i _ -> List.mem i keep) backends
+  in
+  let backends = if ox then with_toggles tc backends else backends in
+  incr cases;
+  let source = Program.program ~ox ~effect_syntax tc in
+  note tc source;
+  (* -dcmm-invariants rejects calls that return unboxed tuples or records. *)
+  let backends =
+    if ox && (contains source "#(" || contains source "#{")
+    then List.map (fun b -> { b with argv = List.filter (( <> ) "-dcmm-invariants") b.argv }) backends
+    else backends
+  in
+  (* Trunk -linscan miscompiles native atomics (see [known_bug]), so they are
+     replaced with ordinary functions. *)
+  let source_for b source =
+    if String.ends_with ~suffix:"linscan" b.name && contains source "Atomic."
+    then atomic_shim ^ source
+    else source
+  in
+  let results = run_all ~source_for backends source in
+  if
+    List.for_all
+      (function
+        | Compile_error _ -> true
+        | Ran _ -> false)
+      results
+  then (
+    if List.for_all
+         (function
+           | Compile_error msg -> known_compile_crash msg
+           | Ran _ -> false)
+         results
+    then (
+      incr known;
+      assume tc false);
+    let crashed =
+      List.exists
+        (function
+          | Compile_error msg -> contains msg "Fatal error"
+          | Ran _ -> false)
+        results
+    in
+    failwith
+      ((if crashed
+        then "compiler crash: no backend compiled the program\n"
+        else "generator bug: no backend compiled the program\n")
+       ^ report backends results));
+  if
+    List.exists
+      (function
+        | Ran (Timeout, _, _) -> true
+        | _ -> false)
+      results
+  then incr timeouts;
+  assume
+    tc
+    (not
+       (List.exists
+          (function
+            | Ran (Timeout, _, _) -> true
+            | _ -> false)
+          results));
+  if known_bug backends results source
+  then (
+    incr known;
+    (* FUZZYCAML_SAVE=dir saves programs that hit known bugs. *)
+    Option.iter
+      (fun dir ->
+         Out_channel.with_open_bin
+           (Filename.concat dir (p "known%d-%d.ml" (Unix.getpid ()) !known))
+           (fun oc -> output_string oc source))
+      (Sys.getenv_opt "FUZZYCAML_SAVE");
+    assume tc false);
+  (* Programs only raise Exit, so a crash or any other uncaught exception is a
+     failure even if all backends agree. *)
+  if
+    List.exists
+      (function
+        | Ran (Signaled _, _, _) -> true
+        | Ran (Exited 2, _, err) ->
+          (* contains, since the debug runtime prints a banner first *)
+          not (contains err "Fatal error: exception Stdlib.Exit")
+        | _ -> false)
+      results
+  then fail backends results "backend crashed\n";
+  match List.map observable results with
+  | first :: rest when List.for_all (( = ) first) rest -> ()
+  | _ -> fail backends results "backends disagree\n"
+;;
