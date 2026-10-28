@@ -44,7 +44,6 @@ let discover ~ox =
       let config var = read_process [| ocamlopt; "-config-var"; var |] in
       let flambda2 = config "flambda2" = Some "true" in
       let flambda = config "flambda" = Some "true" || flambda2 in
-      (* compiler invariant checks *)
       (* OxCaml's unboxed number modules *)
       let libs ext =
         if ox
@@ -54,11 +53,13 @@ let discover ~ox =
           ]
         else []
       in
+      (* native code, with the compiler's invariant checks *)
       let nat flags =
         (ocamlopt :: "-dcmm-invariants" :: (if flambda then [ "-dflambda-invariants" ] else []))
         @ libs ".cmxa"
         @ flags
       in
+      let opt suffix flags = { name = p "%s/ocamlopt%s" switch suffix; argv = nat flags } in
       (* the reference: bytecode with the debug runtime *)
       let byte =
         { name = p "%s/ocamlc" switch; argv = (ocamlc :: libs ".cma") @ [ "-runtime-variant"; "d" ] }
@@ -68,42 +69,27 @@ let discover ~ox =
         if not flambda2
         then []
         else
-          byte
-          :: List.map
-               (fun level ->
-                  { name = p "%s/ocamlopt%s" switch level
-                  ; argv = nat (if level = "" then [] else [ level ])
-                  })
-               [ "-Oclassic"; ""; "-O3" ]
-          @ [ { name = p "%s/ocamlopt-toggles" switch; argv = nat [] } ]
+          [ byte; opt "-Oclassic" [ "-Oclassic" ]; opt "" []; opt "-O3" [ "-O3" ]; opt "-toggles" [] ]
       else if flambda2
       then []
       else
-        [ byte
-        ; { name = p "%s/ocamlopt" switch; argv = nat [] }
-        ; { name = p "%s/ocamlopt-linscan" switch; argv = nat [ "-linscan" ] }
-        ]
+        [ byte; opt "" []; opt "-linscan" [ "-linscan" ] ]
         @
         if flambda
         then
-          [ { name = p "%s/ocamlopt-O3" switch; argv = nat [ "-O3" ] }
-          ; { name = p "%s/ocamlopt-Oclassic" switch; argv = nat [ "-Oclassic" ] }
-          ; { name = p "%s/ocamlopt-O3-linscan" switch; argv = nat [ "-O3"; "-linscan" ] }
-          ; { name = p "%s/ocamlopt-O3-aggressive" switch
-            ; argv =
-                nat
-                  [ "-O3"; "-unbox-closures"; "-inline"; "1000"; "-rounds"; "4"
-                  ; "-inline-max-depth"; "3"; "-remove-unused-arguments"; "-unsafe"
-                  ; "-runtime-variant"; "d"
-                  ]
-            }
+          [ opt "-O3" [ "-O3" ]
+          ; opt "-Oclassic" [ "-Oclassic" ]
+          ; opt "-O3-linscan" [ "-O3"; "-linscan" ]
+          ; opt
+              "-O3-aggressive"
+              [ "-O3"; "-unbox-closures"; "-inline"; "1000"; "-rounds"; "4"
+              ; "-inline-max-depth"; "3"; "-remove-unused-arguments"; "-unsafe"
+              ; "-runtime-variant"; "d"
+              ]
           ]
         else
           (* programs do not rely on bounds checks *)
-          [ { name = p "%s/ocamlopt-unsafe-inline" switch
-            ; argv = nat [ "-unsafe"; "-inline"; "1000"; "-runtime-variant"; "d" ]
-            }
-          ]))
+          [ opt "-unsafe-inline" [ "-unsafe"; "-inline"; "1000"; "-runtime-variant"; "d" ] ]))
 ;;
 
 (* FUZZYCAML_EXTRA="name=compiler flags..;name2=..." adds backends. *)

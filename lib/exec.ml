@@ -104,7 +104,7 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
     ~finally:(fun () ->
       ignore (Sys.command (Filename.quote_command "rm" [ "-rf"; root ])))
     (fun () ->
-       let dirs =
+       let prepared =
          List.mapi
            (fun i b ->
               let dir = Filename.concat root (string_of_int i) in
@@ -118,7 +118,7 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
               dir, List.map (fun (f, _) -> Filename.concat dir f) files)
            backends
        in
-       let dirs, files = List.split dirs in
+       let dirs = List.map fst prepared in
        let exe dir = Filename.concat dir "prog.exe" in
        (* macOS scans each new executable on first launch, which can take up to
           2s. Bytecode avoids this by running prog.exe with ocamlrun. *)
@@ -135,7 +135,7 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
            (fun b (dir, files) ->
               spawn ~dir (b.argv @ [ "-w"; "-a"; "-I"; dir ] @ files @ [ "-o"; exe dir ]))
            backends
-           (List.combine dirs files)
+           prepared
        in
        let compiled = wait_all ~timeout:120. (List.map fst compiles) in
        let runs =

@@ -42,9 +42,8 @@ let supports compiler toggle =
 ;;
 
 let with_toggles tc backends =
-  let level =
-    List.nth [ "-O3"; ""; "-O2"; "-Oclassic"; "-O4" ] (draw_silent tc (integers ~min_value:0 ~max_value:4 ()))
-  in
+  let levels = [ "-O3"; ""; "-O2"; "-Oclassic"; "-O4" ] in
+  let level = List.nth levels (draw_silent tc (integers ~min_value:0 ~max_value:4 ())) in
   let picked = List.filter (fun _ -> draw_silent tc (booleans ~p:0.08 ())) ox_toggles in
   List.map
     (fun b ->
@@ -59,12 +58,9 @@ let with_toggles tc backends =
             never combined. The reaper (also on at -O4) makes -dcmm-invariants
             and -dcfg-invariants reject correct programs, so both checks are
             dropped with it. *)
-         let flags = if reaper then List.filter (fun f -> f <> "-flambda2-expert-phantom-lets" && f <> "-dcfg-invariants") flags else flags in
-         let argv =
-           if reaper
-           then List.filter (( <> ) "-dcmm-invariants") b.argv
-           else b.argv
-         in
+         let drop banned l = if reaper then List.filter (fun f -> not (List.mem f banned)) l else l in
+         let flags = drop [ "-flambda2-expert-phantom-lets"; "-dcfg-invariants" ] flags in
+         let argv = drop [ "-dcmm-invariants" ] b.argv in
          { name = p "%s %s" b.name (String.concat " " flags); argv = argv @ flags })
        else b)
     backends

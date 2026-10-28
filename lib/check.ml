@@ -17,11 +17,8 @@ let fail backends results msg =
   if !focus = None
   then (
     prerr_endline text;
-    let ref_obs = observable (List.hd results) in
-    let odd =
-      List.find_opt (fun i -> observable (List.nth results i) <> ref_obs)
-        (List.init (List.length results - 1) succ)
-    in
+    let reference = observable (List.hd results) in
+    let odd = List.find_index (fun r -> observable r <> reference) results in
     focus := Some (0 :: Option.to_list odd));
   failwith text
 ;;
@@ -50,48 +47,25 @@ let check ~ox ~effect_syntax backends tc =
     else source
   in
   let results = run_all ~source_for backends source in
-  if
-    List.for_all
-      (function
-        | Compile_error _ -> true
-        | Ran _ -> false)
-      results
+  let compile_error f = function
+    | Compile_error msg -> f msg
+    | Ran _ -> false
+  in
+  if List.for_all (compile_error (Fun.const true)) results
   then (
-    if List.for_all
-         (function
-           | Compile_error msg -> known_compile_crash msg
-           | Ran _ -> false)
-         results
+    if List.for_all (compile_error known_compile_crash) results
     then (
       incr known;
       assume tc false);
-    let crashed =
-      List.exists
-        (function
-          | Compile_error msg -> contains msg "Fatal error"
-          | Ran _ -> false)
-        results
-    in
     failwith
-      ((if crashed
+      ((if List.exists (compile_error (fun msg -> contains msg "Fatal error")) results
         then "compiler crash: no backend compiled the program\n"
         else "generator bug: no backend compiled the program\n")
        ^ report backends results));
-  if
-    List.exists
-      (function
-        | Ran (Timeout, _, _) -> true
-        | _ -> false)
-      results
-  then incr timeouts;
-  assume
-    tc
-    (not
-       (List.exists
-          (function
-            | Ran (Timeout, _, _) -> true
-            | _ -> false)
-          results));
+  if List.exists (function Ran (Timeout, _, _) -> true | _ -> false) results
+  then (
+    incr timeouts;
+    assume tc false);
   if known_bug backends results source
   then (
     incr known;
