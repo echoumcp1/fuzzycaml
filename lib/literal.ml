@@ -1,7 +1,6 @@
 open Hegel
 open Ty
 open Ctx
-open Gen_ty
 
 let int_literal ctx =
   choose
@@ -19,6 +18,8 @@ let int_literal ctx =
     ; (fun () -> paren (string_of_int (draw_silent ctx.tc (integers ()))))
     ]
 ;;
+
+let int64_lit n = paren (p "%LdL" n)
 
 let rec float_literal ctx =
   choose
@@ -48,22 +49,14 @@ and float_bits ctx =
     ; Int64.bits_of_float (Float.ldexp 1. (int_in ctx (-1074) 1023))
     ]
   in
-  let bits =
-    Int64.add
-      (List.nth edge (int_in ctx 0 (List.length edge - 1)))
-      (Int64.of_int (int_in ctx (-1) 1))
-  in
-  let bits = if draw_silent ctx.tc (booleans ()) then Int64.logor bits Int64.min_int else bits in
-  if Int64.compare bits 0L < 0 then p "(%LdL)" bits else p "%LdL" bits
+  let bits = Int64.add (pick ctx edge) (Int64.of_int (int_in ctx (-1) 1)) in
+  int64_lit (if flip ctx then Int64.logor bits Int64.min_int else bits)
 ;;
 
 let float32_bits ctx =
   let edge = [ 1l; 0x007fffffl; 0x00800000l; 0x7f7fffffl; 0x7f800000l; 0x7f800001l; 0x7fc00001l; 0x3f800000l ] in
-  let bits =
-    Int32.add (List.nth edge (int_in ctx 0 (List.length edge - 1))) (Int32.of_int (int_in ctx (-1) 1))
-  in
-  let bits = if draw_silent ctx.tc (booleans ()) then Int32.logor bits Int32.min_int else bits in
-  if Int32.compare bits 0l < 0 then p "(%ldl)" bits else p "%ldl" bits
+  let bits = Int32.add (pick ctx edge) (Int32.of_int (int_in ctx (-1) 1)) in
+  paren (p "%ldl" (if flip ctx then Int32.logor bits Int32.min_int else bits))
 ;;
 
 (* A literal of a newer number type: an integer in its range or a float32,
@@ -127,8 +120,6 @@ let char_literal ctx =
     ]
 ;;
 
-let int64_lit n = if Int64.compare n 0L < 0 then p "(%LdL)" n else p "%LdL" n
-
 let int64_literal ctx =
   choose
     ctx
@@ -151,7 +142,7 @@ let string_literal ctx =
   p
     "%S"
     (String.init n (fun _ ->
-       if draw_silent ctx.tc (booleans ~p:0.2 ())
+       if flip ~p:0.2 ctx
        then Char.chr (int_in ctx 0 255)
        else Char.chr (int_in ctx (Char.code 'a') (Char.code 'e'))))
 ;;
@@ -159,7 +150,7 @@ let string_literal ctx =
 let rec literal ctx ty =
   match ty with
   | Int -> int_literal ctx
-  | Bool -> if draw_silent ctx.tc (booleans ()) then "true" else "false"
+  | Bool -> string_of_bool (flip ctx)
   | Float -> float_literal ctx
   | Char -> char_literal ctx
   | Int64 -> int64_literal ctx
@@ -172,7 +163,7 @@ let rec literal ctx ty =
       ; (fun () -> p "[%s; %s; %s]" (literal ctx t) (literal ctx t) (literal ctx t))
       ]
   | Option t ->
-    if draw_silent ctx.tc (booleans ()) then p "(Some %s)" (literal ctx t) else "None"
+    if flip ctx then p "(Some %s)" (literal ctx t) else "None"
   | Pair (a, b) -> p "(%s, %s)" (literal ctx a) (literal ctx b)
   | Arrow (a, b) -> p "(fun (_ : %s) -> %s)" (show_ty a) (literal ctx b)
   | U UF ->
@@ -186,7 +177,7 @@ let rec literal ctx ty =
   | Num _ | U _ -> num_literal ctx ty
   | UTuple ts -> p "#(%s)" (String.concat ", " (List.map (literal ctx) ts))
   | Or_null t ->
-    if draw_silent ctx.tc (booleans ()) then p "(This %s)" (literal ctx t) else "Null"
+    if flip ctx then p "(This %s)" (literal ctx t) else "Null"
   | Arr t -> p "[| %s |]" (String.concat "; " (List.init (int_in ctx 1 3) (fun _ -> literal ctx t)))
   | Named i ->
     (match ctx.decls.(i) with
@@ -197,7 +188,7 @@ let rec literal ctx ty =
             "; "
             (List.map (fun (f, t, _) -> p "%s = %s" f (literal ctx t)) fields))
      | Variant constrs ->
-       let c, args = List.nth constrs (int_in ctx 0 (List.length constrs - 1)) in
+       let c, args = pick ctx constrs in
        construct c (List.map (literal ctx) args)
      | URecord fields ->
        p "#{ %s }" (String.concat "; " (List.map (fun (f, t) -> p "%s = %s" f (literal ctx t)) fields)))

@@ -106,6 +106,7 @@ let boxed_of = function
 
 let all_nb = [ I8; I16; I32; Nat; F32 ]
 let all_ub = [ UF; UF32; UI; UI8; UI16; UI32; UI64; UNat ]
+let newer_nums = List.map (fun n -> Num n) all_nb @ List.map (fun u -> U u) all_ub
 
 (* Number conversions are externals, declared at the top of the program as they
    are used. Float-to-integer conversions saturate, since out-of-range results
@@ -142,16 +143,14 @@ let rec show_ty = function
   | Pair (a, b) -> Printf.sprintf "(%s * %s)" (show_ty a) (show_ty b)
   | Arrow (a, b) -> Printf.sprintf "(%s -> %s)" (show_ty a) (show_ty b)
   | Named i -> Printf.sprintf "t%d" i
-  | U UF -> "float#"
-  | (Num _ | U _) as t when t <> Num I32 && t <> Num Nat -> num_module t ^ ".t"
   | Num I32 -> "int32"
   | Num Nat -> "nativeint"
+  | U UF -> "float#"
+  | (Num _ | U _) as t -> num_module t ^ ".t"
   | UTuple ts -> Printf.sprintf "#(%s)" (String.concat " * " (List.map show_ty ts))
   | Or_null t -> Printf.sprintf "(%s or_null)" (show_ty t)
   | Arr t -> Printf.sprintf "(%s array)" (show_ty t)
-  | Num _ | U _ -> assert false
 ;;
-
 
 (* float32 is not first-order, to avoid polymorphic comparison of float32 NaNs.
    *)
@@ -171,7 +170,6 @@ let restricted = function
   | Named i -> !urec.(i)
   | _ -> false
 ;;
-
 
 let rec has_float_u t =
   match t with

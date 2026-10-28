@@ -1,4 +1,3 @@
-open Hegel
 open Config
 open Ty
 open Ctx
@@ -37,7 +36,7 @@ let local_binding ctx env ty e =
           | constrs ->
             Some
               (fun () ->
-                let c, args = List.nth constrs (int_in ctx 0 (List.length constrs - 1)) in
+                let c, args = pick ctx constrs in
                 construct c (List.map (e env) args)))
        | URecord _ -> None)
     | _ -> None
@@ -80,14 +79,14 @@ let ox_forms ctx env ty e =
              (function
                | UTuple ts when List.mem ty ts -> Some ts
                | _ -> None)
-             (fun () -> if draw_silent ctx.tc (booleans ()) then [ ty; top_ty ctx ] else [ top_ty ctx; ty ])
+             (fun () -> if flip ctx then [ ty; top_ty ctx ] else [ top_ty ctx; ty ])
          in
          let xs = List.map (fun t -> fresh ctx "u", t) ts in
          p
            "(let #(%s) = %s in %s)"
            (String.concat ", " (List.map fst xs))
            (e env (UTuple ts))
-           (e (List.fold_left (fun env (x, t) -> bind env x t) env xs) ty))
+           (e (bind_all env xs) ty))
      ]
    else [])
   @ (if on "or_null"
@@ -135,8 +134,7 @@ let num_ops ctx env t e =
   let m = num_module t in
   let call f args () = p "(%s.%s %s)" m f (String.concat " " (List.map (e env) args)) in
   let from () =
-    let nums = [ Int; Int64; Float ] @ List.map (fun n -> Num n) all_nb @ List.map (fun u -> U u) all_ub in
-    let s = List.nth nums (int_in ctx 0 (List.length nums - 1)) in
+    let s = pick ctx ([ Int; Int64; Float ] @ newer_nums) in
     convert s t (e env s)
   in
   from
@@ -153,11 +151,11 @@ let num_ops ctx env t e =
         @ [ call "neg" [ t ]
           ; (fun () ->
               let w = width t in
-              let sh = choose ctx (List.map (fun s () -> s) [ "shift_left"; "shift_right"; "shift_right_logical" ]) in
+              let sh = pick ctx [ "shift_left"; "shift_right"; "shift_right_logical" ] in
               let count =
                 choose
                   ctx
-                  [ (fun () -> string_of_int (List.nth [ 0; 1; w - 2; w - 1 ] (int_in ctx 0 3)))
+                  [ (fun () -> string_of_int (pick ctx [ 0; 1; w - 2; w - 1 ]))
                   ; (fun () -> p "(%s land %d)" (e env Int) (if w = 63 then 31 else w - 1))
                   ]
               in
@@ -167,8 +165,7 @@ let num_ops ctx env t e =
 
 (* Comparing two numbers of one of the newer types, through int64 or float. *)
 let num_compare ctx env e =
-  let nums = List.map (fun n -> Num n) all_nb @ List.map (fun u -> U u) all_ub in
-  let t = List.nth nums (int_in ctx 0 (List.length nums - 1)) in
+  let t = pick ctx newer_nums in
   let hub = if is_float t then Float else Int64 in
   let m = if is_float t then "Float" else "Int64" in
   let a = convert t hub (e env t) in

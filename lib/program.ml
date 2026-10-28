@@ -57,11 +57,11 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     let decl = gen_decl ctx in
     let i = add decl in
     (match decl with
-     | Record fields when urecords && draw_silent ctx.tc (booleans ()) ->
+     | Record fields when urecords && flip ctx ->
        let u = add (URecord (List.map (fun (f, t, _) -> "u" ^ f, t) fields)) in
        twins := (i, u) :: !twins
      | _ -> ());
-    if urecords && draw_silent ctx.tc (booleans ~p:0.3 ())
+    if urecords && flip ~p:0.3 ctx
     then
       ignore
         (add
@@ -86,7 +86,7 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   let globals =
     List.init (if on "atomics" then int_in ctx 0 2 else 0) (fun _ ->
       let g = fresh ctx "g" in
-      let ty = if draw_silent ctx.tc (booleans ()) then Bool else Int in
+      let ty = if flip ctx then Bool else Int in
       Buffer.add_string
         buf
         (p "let %s : %s Atomic.t = Atomic.make %s\n" g (show_ty ty) (literal ctx ty));
@@ -97,7 +97,7 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     match globals with
     | [] -> ()
     | _ ->
-      let g, ty = List.nth globals (int_in ctx 0 (List.length globals - 1)) in
+      let g, ty = pick ctx globals in
       let e env t = expr ctx env t (depth - 1) in
       Buffer.add_string
         buf
@@ -109,14 +109,14 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   in
   let boundary = ref (not (on "modules")) in
   ignore @@ repeat ctx 1 6 (fun _ ->
-    if (not !boundary) && draw_silent ctx.tc (booleans ~p:0.3 ())
+    if (not !boundary) && flip ~p:0.3 ctx
     then (
       boundary := true;
       Buffer.add_string buf module_boundary);
-    if draw_silent ctx.tc (booleans ~p:0.4 ()) then statement ();
+    if flip ~p:0.4 ctx then statement ();
     let ty =
       match !poly_parent with
-      | (child, _) :: _ when draw_silent ctx.tc (booleans ()) -> Named child
+      | (child, _) :: _ when flip ctx -> Named child
       | _ -> fo_ty ctx
     in
     let v = fresh ctx "v" in

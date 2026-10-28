@@ -17,8 +17,16 @@ let fresh ctx prefix =
 ;;
 
 let int_in ctx lo hi = draw_silent ctx.tc (integers ~min_value:lo ~max_value:hi ())
-let choose ctx options = (List.nth options (int_in ctx 0 (List.length options - 1))) ()
+let flip ?p ctx = draw_silent ctx.tc (booleans ?p ())
+let pick ctx l = List.nth l (int_in ctx 0 (List.length l - 1))
+let choose ctx options = pick ctx options ()
+
+(* The declarations with their indices. *)
+let indexed_decls ctx = List.mapi (fun i d -> i, d) (Array.to_list ctx.decls)
 let p = Printf.sprintf
+
+(* Parenthesises a negative literal. *)
+let paren s = if String.length s > 0 && s.[0] = '-' then p "(%s)" s else s
 
 let span ctx f =
   draw_silent ctx.tc (Generators.Ppx_internal.composite_with_label ~label (fun _ -> f ()))
@@ -28,7 +36,7 @@ let span ctx f =
    its own span, so the shrinker can delete any one of them. *)
 let repeat ctx lo hi f =
   let rec go i =
-    if i < hi && (i < lo || draw_silent ctx.tc (booleans ~p:0.7 ()))
+    if i < hi && (i < lo || flip ~p:0.7 ctx)
     then (
       let x = span ctx (fun () -> f i) in
       x :: go (i + 1))

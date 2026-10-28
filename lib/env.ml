@@ -1,4 +1,3 @@
-open Hegel
 open Ty
 open Ctx
 open Gen_ty
@@ -14,11 +13,16 @@ type env =
   }
 
 let bind env x t = { env with vars = (x, t) :: env.vars }
+let bind_all env vars = List.fold_left (fun env (x, t) -> bind env x t) env vars
 let bind_local env x t = { env with locals = (x, t) :: env.locals }
 let closure env = { env with locals = []; muts = [] }
 
 (* For a function that may be called outside the enclosing handlers. *)
 let escape env = { (closure env) with effs = [] }
+
+(* For a lazy, which must not perform an effect, as that could leave it
+   unfinished. *)
+let lazy_body env = { (escape env) with in_try = env.in_try }
 
 let immediate = function
   | Int | Bool -> true
@@ -30,14 +34,11 @@ let immediate = function
 let from_env ctx env extract fallback =
   let all = env.vars @ env.locals in
   let unused = List.filter (fun (x, _) -> not (Hashtbl.mem ctx.used x)) all in
+  let found vars = List.filter_map (fun (_, t) -> extract t) vars in
   (* Prefer unused variables, so that parameters get used. *)
-  let pick vars = List.filter_map (fun (_, t) -> extract t) vars in
-  match pick unused, pick all with
-  | [], [] -> fallback ()
-  | found, _ :: _ when found <> [] && draw_silent ctx.tc (booleans ~p:0.7 ()) ->
-    List.nth found (int_in ctx 0 (List.length found - 1))
-  | _, found when found <> [] && draw_silent ctx.tc (booleans ~p:0.7 ()) ->
-    List.nth found (int_in ctx 0 (List.length found - 1))
+  match found unused, found all with
+  | found, _ when found <> [] && flip ~p:0.7 ctx -> pick ctx found
+  | _, found when found <> [] && flip ~p:0.7 ctx -> pick ctx found
   | _ -> fallback ()
 ;;
 

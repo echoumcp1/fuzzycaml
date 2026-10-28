@@ -1,4 +1,3 @@
-open Hegel
 open Ty
 open Ctx
 open Env
@@ -6,7 +5,7 @@ open Env
 (* The effects a handler handles, the type [b] of its body, whether it
    catches Exit, and the body's environment. *)
 let handler_setup ctx env =
-  let handled = List.filter (fun _ -> draw_silent ctx.tc (booleans ())) ctx.effects in
+  let handled = List.filter (fun _ -> flip ctx) ctx.effects in
   let handled = if handled = [] then [ List.hd ctx.effects ] else handled in
   let b =
     from_env
@@ -15,7 +14,7 @@ let handler_setup ctx env =
       some_ty
       (fun () -> fo_env_ty ctx env)
   in
-  let catch = draw_silent ctx.tc (booleans ~p:0.3 ()) in
+  let catch = flip ~p:0.3 ctx in
   handled, b, catch, { env with effs = handled @ env.effs; in_try = env.in_try || catch }
 ;;
 
@@ -44,17 +43,24 @@ let arm ctx env ty e ~resume ~discontinue (_, a, r) =
 ;;
 
 let deep_resume k v r = p "Effect.Deep.continue %s (%s : %s)" k v (show_ty r)
+
+(* A handler's exnc: it catches Exit if [catch]. *)
+let exnc env ty e catch =
+  if catch then p "(function Exit -> %s | ex -> raise ex)" (e env ty) else "raise"
+;;
+
+(* Performs [c] with an argument of type [a] and binds its result of type [r]
+   in a body of type [ty]. *)
+let perform_let ctx env e (c, a, r) ty =
+  let y = fresh ctx "y" in
+  p "(let %s : %s = Effect.perform (%s %s) in %s)" y (show_ty r) c (e env a) (e (bind env y r) ty)
 ;;
 
 (* A deep handler for some of the program's effects around a body of type [b]. *)
 let handler ctx env ty e =
   let handled, b, catch, body_env = handler_setup ctx env in
   let x = fresh ctx "x" in
-  let exnc =
-    if catch
-    then p "(function Exit -> %s | ex -> raise ex)" (e env ty)
-    else "raise"
-  in
+  let exnc = exnc env ty e catch in
   let arm ((c, _, _) as eff) =
     let v, k, body = arm ctx env ty e ~resume:deep_resume ~discontinue:true eff in
     p
@@ -69,18 +75,8 @@ let handler ctx env ty e =
     "(Effect.Deep.match_with (fun () -> %s) () { Effect.Deep.retc = (fun (%s : %s) -> \
      %s); exnc = %s; effc = (fun (type a) (eff : a Effect.t) -> match eff with %s | _ \
      -> None) })"
-    (let c, a, r = List.nth handled (int_in ctx 0 (List.length handled - 1)) in
-     if draw_silent ctx.tc (booleans ())
-     then (
-       let y = fresh ctx "y" in
-       p
-         "(let %s : %s = Effect.perform (%s %s) in %s)"
-         y
-         (show_ty r)
-         c
-         (e body_env a)
-         (e (bind body_env y r) b))
-     else e body_env b)
+    (let eff = pick ctx handled in
+     if flip ctx then perform_let ctx body_env e eff b else e body_env b)
     x
     (show_ty b)
     (e (bind env x b) ty)
@@ -95,9 +91,7 @@ let shallow ctx env ty e =
   let go = fresh ctx "go" in
   let tv = fresh ctx "c" in
   let x = fresh ctx "x" in
-  let exnc =
-    if catch then p "(function Exit -> %s | ex -> raise ex)" (e env ty) else "raise"
-  in
+  let exnc = exnc env ty e catch in
   let arm ((c, _, _) as eff) =
     let resume k v _ = p "%s %s %s" go k v in
     let v, k, body = arm ctx env ty e ~resume ~discontinue:false eff in

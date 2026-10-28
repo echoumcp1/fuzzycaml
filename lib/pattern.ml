@@ -1,4 +1,3 @@
-open Hegel
 open Config
 open Ty
 open Ctx
@@ -6,12 +5,12 @@ open Gen_ty
 open Literal
 
 let gen_decl ctx =
-  if on "records" && draw_silent ctx.tc (booleans ())
+  if on "records" && flip ctx
   then (
-    let all_float = draw_silent ctx.tc (booleans ~p:0.3 ()) in
-    let float = if !ox_mode && draw_silent ctx.tc (booleans ()) then float_u else Float in
+    let all_float = flip ~p:0.3 ctx in
+    let float = if !ox_mode && flip ctx then float_u else Float in
     let unboxed () =
-      if on "numbers" then U (List.nth all_ub (int_in ctx 0 (List.length all_ub - 1))) else float_u
+      if on "numbers" then U (pick ctx all_ub) else float_u
     in
     Record
       (repeat ctx 1 4 (fun _ ->
@@ -19,13 +18,13 @@ let gen_decl ctx =
          let t =
            if all_float
            then float
-           else if !ox_mode && draw_silent ctx.tc (booleans ~p:0.25 ())
+           else if !ox_mode && flip ~p:0.25 ctx
            then unboxed ()
            else fo_ty ctx
          in
-         f, t, draw_silent ctx.tc (booleans ~p:0.3 ()))))
+         f, t, flip ~p:0.3 ctx)))
   else (
-    let poly = (not !ox_mode) && on "poly" && draw_silent ctx.tc (booleans ~p:0.35 ()) in
+    let poly = (not !ox_mode) && on "poly" && flip ~p:0.35 ctx in
     let own () =
       repeat ctx 1 4 (fun _ ->
         let c = fresh ctx (if poly then "`C" else "C") in
@@ -37,11 +36,11 @@ let gen_decl ctx =
            match d with
            | Variant ((c, _) :: _ as cs) when c.[0] = '`' -> Some (j, cs)
            | _ -> None)
-        (List.mapi (fun j d -> j, d) (Array.to_list ctx.decls))
+        (indexed_decls ctx)
     in
-    if poly && polys <> [] && draw_silent ctx.tc (booleans ())
+    if poly && polys <> [] && flip ctx
     then (
-      let j, inherited = List.nth polys (int_in ctx 0 (List.length polys - 1)) in
+      let j, inherited = pick ctx polys in
       poly_parent := (Array.length ctx.decls, j) :: !poly_parent;
       Variant (inherited @ own ()))
     else Variant (own ()))
@@ -131,7 +130,7 @@ let rec pattern ?(top = false) ctx ty depth ~binds =
        | Record fields ->
          [ (fun () ->
              let picked =
-               match List.filter (fun _ -> draw_silent ctx.tc (booleans ())) fields with
+               match List.filter (fun _ -> flip ctx) fields with
                | [] -> [ List.hd fields ]
                | picked -> picked
              in
@@ -172,7 +171,7 @@ let rec pattern ?(top = false) ctx ty depth ~binds =
   in
   if depth <= 0
   then choose ctx [ (fun () -> none "_"); var ]
-  else if structural <> [] && (top || draw_silent ctx.tc (booleans ~p:0.75 ()))
+  else if structural <> [] && (top || flip ~p:0.75 ctx)
   then choose ctx (structural @ combined)
   else choose ctx [ (fun () -> none "_"); var ]
 ;;

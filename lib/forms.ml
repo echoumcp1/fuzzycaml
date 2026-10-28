@@ -52,7 +52,7 @@ let partial ctx env ty e =
   (* Labelled arguments commute; positional ones keep their order. *)
   let shuffle args =
     let moved, kept =
-      List.partition (fun (pos, _) -> (not pos) && draw_silent ctx.tc (booleans ~p:0.3 ())) args
+      List.partition (fun (pos, _) -> (not pos) && flip ~p:0.3 ctx) args
     in
     String.concat " " (List.map snd (kept @ moved))
   in
@@ -64,7 +64,7 @@ let partial ctx env ty e =
       let rest = List.filteri (fun i _ -> i >= k) params in
       shuffle (args here) :: chunks rest
   in
-  let attr = choose ctx [ (fun () -> ""); (fun () -> "[@inline never]"); (fun () -> "[@inline]") ] in
+  let attr = pick ctx [ ""; "[@inline never]"; "[@inline]" ] in
   let head =
     choose
       ctx
@@ -170,14 +170,14 @@ let local_exn ctx env ty e =
      %s) else %s in let %s = %s in let %s = %s in try %s %s %s with %s %s -> %s)"
     x
     (show_ty s)
-    (choose ctx [ (fun () -> ""); (fun () -> "[@inline never]") ])
+    (pick ctx [ ""; "[@inline never]" ])
     th
     b
     v
     (show_ty s)
     (show_ty ty)
     b
-    (choose ctx [ (fun () -> "raise"); (fun () -> "raise_notrace") ])
+    (pick ctx [ "raise"; "raise_notrace" ])
     x
     v
     (e (bind (bind env b Bool) v s) ty)
@@ -198,9 +198,7 @@ let lazy_value ctx env ty e =
   let s = from_env ctx env (fun t -> if restricted t then None else Some t) (fun () -> any_ty ctx) in
   let l = fresh ctx "lz" in
   let x = fresh ctx "x" in
-  (* No effect is performed inside a lazy, since it could leave the lazy
-     unfinished. *)
-  let body = e { (escape env) with in_try = env.in_try } s in
+  let body = e (lazy_body env) s in
   choose
     ctx
     [ (fun () ->
@@ -210,7 +208,7 @@ let lazy_value ctx env ty e =
           body
           (e (bind env (p "(Lazy.force %s)" l) s) ty))
     ; (fun () -> p "(match lazy %s with lazy %s -> %s)" body x (e (bind env x s) ty))
-    ; (fun () -> p "(Lazy.force (Lazy.from_fun (fun () -> %s)))" (e { (escape env) with in_try = env.in_try } ty))
+    ; (fun () -> p "(Lazy.force (Lazy.from_fun (fun () -> %s)))" (e (lazy_body env) ty))
     ]
 ;;
 
@@ -222,13 +220,12 @@ let rec_value ctx env ty e =
   let body env = e (bind (closure env) n Int) ty in
   [ (fun () ->
       let l = fresh ctx "lz" in
-      (* no effect inside the lazy, as in [lazy_value] *)
       p
         "(let rec %s : %s Lazy.t = lazy %s and %s : int -> %s = fun %s -> if %s <= 0 \
          then Lazy.force %s else %s (%s - 1) in %s (%s land 7))"
         l
         (show_ty ty)
-        (e { (escape env) with in_try = env.in_try } ty)
+        (e (lazy_body env) ty)
         f
         (show_ty ty)
         n

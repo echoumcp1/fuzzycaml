@@ -1,4 +1,3 @@
-open Hegel
 open Config
 open Ty
 open Ctx
@@ -19,20 +18,18 @@ let generic ctx env ty e =
      local). *)
   let scrutinee env s =
     match List.filter (fun (_, t) -> t = s) env.locals with
-    | locals when locals <> [] && draw_silent ctx.tc (booleans ~p:0.6 ()) ->
-      fst (List.nth locals (int_in ctx 0 (List.length locals - 1))), true
+    | locals when locals <> [] && flip ~p:0.6 ctx ->
+      fst (pick ctx locals), true
     | _ -> e env s, false
   in
   let bind_part local env x t =
     if local && not (immediate t) then bind_local env x t else bind env x t
   in
   let rec_attr () =
-    choose
+    pick
       ctx
-      (List.map
-         (fun a () -> a)
-         ([ ""; "[@inline never]"; "[@inline always]" ]
-          @ if !ox_mode then [ "[@unrolled 2]"; "[@loop always]" ] else []))
+      ([ ""; "[@inline never]"; "[@inline always]" ]
+       @ if !ox_mode then [ "[@unrolled 2]"; "[@loop always]" ] else [])
   in
   let call_attr go =
     choose
@@ -176,18 +173,18 @@ let generic ctx env ty e =
              match d with
              | Variant cs -> Some (j, cs)
              | _ -> None)
-          (List.mapi (fun j d -> j, d) (Array.to_list ctx.decls))
+          (indexed_decls ctx)
       in
       let v =
         match s with
-        | Pair (a, b) when (not local) && draw_silent ctx.tc (booleans ~p:0.4 ()) ->
+        | Pair (a, b) when (not local) && flip ~p:0.4 ctx ->
           p "%s, %s" (e env a) (e env b)
         | Named k
-          when (not local) && List.mem_assoc k variants && draw_silent ctx.tc (booleans ~p:0.3 ()) ->
+          when (not local) && List.mem_assoc k variants && flip ~p:0.3 ctx ->
           (* match-in-match: the inner match's input is opaque, so its result
              constructor is unknown, but each arm builds a known one. *)
           let outs = List.assoc k variants in
-          let j, ins = List.nth variants (int_in ctx 0 (List.length variants - 1)) in
+          let j, ins = pick ctx variants in
           let off = int_in ctx 0 (List.length outs - 1) in
           let arm idx (c, args) =
             let c', args' = List.nth outs ((idx + off) mod List.length outs) in
@@ -200,7 +197,7 @@ let generic ctx env ty e =
         let q, bound = pattern ~top:true ctx s 3 ~binds:true in
         let env' = List.fold_left (fun env (x, t) -> bind_part local env x t) env bound in
         let guard =
-          if draw_silent ctx.tc (booleans ~p:0.3 ())
+          if flip ~p:0.3 ctx
           then p " when %s" (e env' Bool)
           else ""
         in
@@ -210,11 +207,11 @@ let generic ctx env ty e =
       let arms =
         String.concat
           " "
-          (if (not local) && (not (restricted s)) && on "exits" && draw_silent ctx.tc (booleans ~p:0.2 ())
+          (if (not local) && (not (restricted s)) && on "exits" && flip ~p:0.2 ctx
            then arms @ [ p "| exception Exit -> %s" (e env ty) ]
            else arms)
       in
-      if draw_silent ctx.tc (booleans ~p:0.6 ())
+      if flip ~p:0.6 ctx
       then (
         let x = fresh ctx "m" in
         p "(match %s with %s | %s -> %s)" v arms x (e (bind_part local env x s) ty))
@@ -280,7 +277,7 @@ let generic ctx env ty e =
              (fun (f, t) -> if t = ty then Some (fun () -> p "(%s).#%s" (e env (Named i)) f) else None)
              fields
          | Variant _ -> [])
-      (List.mapi (fun i d -> i, d) (Array.to_list ctx.decls))
+      (indexed_decls ctx)
   @ (if !ox_mode then ox_forms ctx env ty e else [])
   @ (if env.in_try
      then [ (fun () -> raise_at ctx ty) ]

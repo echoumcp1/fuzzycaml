@@ -25,7 +25,7 @@ let rec gen_ty ?(unboxed = false) ctx ~first_order depth =
      ]
      @ (if on "strings" then [ (fun () -> Str) ] else [])
      @ (if named <> []
-        then [ (fun () -> Named (List.nth named (int_in ctx 0 (List.length named - 1)))) ]
+        then [ (fun () -> Named (pick ctx named)) ]
         else [])
      @ (if unboxed && !ox_mode then [ (fun () -> float_u) ] else [])
      @ (if ox "numbers" then List.map (fun t () -> t) nums else [])
@@ -65,11 +65,10 @@ and array_elem ctx depth =
   choose
     ctx
     ([ (fun () -> Int); (fun () -> Float); (fun () -> Int64) ]
-     @ (if on "numbers" then List.map (fun t () -> t) (List.map (fun n -> Num n) all_nb @ List.map (fun u -> U u) all_ub) else [ (fun () -> float_u) ])
+     @ (if on "numbers" then List.map (fun t () -> t) newer_nums else [ (fun () -> float_u) ])
      @ if depth > 0 then [ (fun () -> Arr (array_elem ctx (depth - 1))) ] else [])
 ;;
 
 let any_ty ctx = gen_ty ctx ~first_order:false 2
 let top_ty ctx = gen_ty ~unboxed:true ctx ~first_order:false 2
 let fo_ty ctx = gen_ty ctx ~first_order:true 2
-let paren s = if String.length s > 0 && s.[0] = '-' then p "(%s)" s else s

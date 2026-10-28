@@ -1,5 +1,7 @@
 open Ty
 
+let p = Printf.sprintf
+
 let rec printer = function
   | Int -> "string_of_int"
   | Bool -> "string_of_bool"
@@ -8,30 +10,28 @@ let rec printer = function
   | Int64 -> "Int64.to_string"
   | Str -> {|(Printf.sprintf "%S")|}
   | List t ->
-    Printf.sprintf
+    p
       {|(fun l -> "[" ^ String.concat "; " (List.map %s l) ^ "]")|}
       (printer t)
   | Option t ->
-    Printf.sprintf
+    p
       {|(function None -> "None" | Some v -> "Some (" ^ %s v ^ ")")|}
       (printer t)
   | Pair (a, b) ->
-    Printf.sprintf
+    p
       {|(fun (a, b) -> "(" ^ %s a ^ ", " ^ %s b ^ ")")|}
       (printer a)
       (printer b)
   | Arrow _ -> {|(fun _ -> "<fun>")|}
-  | Named i -> Printf.sprintf "show_t%d" i
+  | Named i -> p "show_t%d" i
   | t when is_num t ->
     if is_float t
-    then Printf.sprintf "(fun (x : %s) -> show_float %s)" (show_ty t) (convert t Float "x")
-    else Printf.sprintf "(fun (x : %s) -> Int64.to_string %s)" (show_ty t) (convert t Int64 "x")
+    then p "(fun (x : %s) -> show_float %s)" (show_ty t) (convert t Float "x")
+    else p "(fun (x : %s) -> Int64.to_string %s)" (show_ty t) (convert t Int64 "x")
   | _ -> {|(fun _ -> "<unprintable>")|}
 ;;
 
-
 let declaration ?parent i decl =
-  let p = Printf.sprintf in
   match decl with
   | Record fields ->
     let field (f, t, m) = p "%s%s : %s" (if m then "mutable " else "") f (show_ty t) in

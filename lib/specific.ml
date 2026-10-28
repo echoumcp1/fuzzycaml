@@ -1,4 +1,3 @@
-open Hegel
 open Config
 open Ty
 open Ctx
@@ -20,12 +19,12 @@ let specific ctx env ty e =
     @ [ (fun () -> p "(%s / %s)" (e env Int) (nonzero ctx))
       ; (fun () -> p "(%s mod %s)" (e env Int) (nonzero ctx))
       ; (fun () ->
-          let op = choose ctx (List.map (fun o () -> o) [ "/"; "mod" ]) in
+          let op = pick ctx [ "/"; "mod" ] in
           p "(try %s %s 0 with Division_by_zero -> %s)" (e env Int) op (e env Int))
       ; (fun () ->
-          let op = choose ctx (List.map (fun o () -> o) [ "lsl"; "lsr"; "asr" ]) in
+          let op = pick ctx [ "lsl"; "lsr"; "asr" ] in
           let amount =
-            if draw_silent ctx.tc (booleans ())
+            if flip ctx
             then p "(%s land 31)" (e env Int)
             else string_of_int (int_in ctx 0 62)
           in
@@ -118,11 +117,7 @@ let specific ctx env ty e =
       ; (fun () -> p "(Int64.rem %s %s)" (e env Int64) (int64_lit (nonzero64 ctx)))
       ; (fun () ->
           let op =
-            choose
-              ctx
-              (List.map
-                 (fun o () -> o)
-                 [ "Int64.shift_left"; "Int64.shift_right"; "Int64.shift_right_logical" ])
+            pick ctx [ "Int64.shift_left"; "Int64.shift_right"; "Int64.shift_right_logical" ]
           in
           p "(%s %s (%s land 63))" op (e env Int64) (e env Int))
       ]
@@ -317,7 +312,7 @@ let specific ctx env ty e =
        let build () = String.concat "; " (List.map (fun (f, t) -> p "%s = %s" f (e env t)) fields) in
        [ (fun () -> p "#{ %s }" (build ()))
        ; (fun () ->
-           let f, t = List.nth fields (int_in ctx 0 (List.length fields - 1)) in
+           let f, t = pick ctx fields in
            p "#{ %s with %s = %s }" (e env ty) f (e env t))
        ]
        @ List.filter_map
@@ -350,7 +345,7 @@ let specific ctx env ty e =
        in
        [ (fun () -> p "{ %s }" (build ()))
        ; (fun () ->
-           let f, t, _ = List.nth fields (int_in ctx 0 (List.length fields - 1)) in
+           let f, t, _ = pick ctx fields in
            p "{ %s with %s = %s }" (e env ty) f (e env t))
        ]
        @ List.filter_map
@@ -377,7 +372,7 @@ let specific ctx env ty e =
                let r = fresh ctx "r" in
                let i = fresh ctx "i" in
                let f, t, _ =
-                 List.nth mutables (int_in ctx 0 (List.length mutables - 1))
+                 pick ctx mutables
                in
                let env' =
                  List.fold_left

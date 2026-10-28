@@ -1,19 +1,23 @@
-open Hegel
 open Ty
 open Ctx
 open Gen_ty
 open Env
+
+(* [let x : t = <e> in ] for each variable. *)
+let lets e env vars =
+  String.concat "" (List.map (fun (x, t) -> p "let %s : %s = %s in " x (show_ty t) (e env t)) vars)
+;;
 
 (* Many ints and floats live across an opaque call, so some must be spilled. *)
 let pressure ctx env ty e =
   let n = int_in ctx 8 20 in
   let vars =
     List.init n (fun _ ->
-      let t = if draw_silent ctx.tc (booleans ()) then Int else Float in
+      let t = if flip ctx then Int else Float in
       fresh ctx (if t = Int then "i" else "f"), t)
   in
   let k = fresh ctx "k" in
-  let env' = List.fold_left (fun env (x, t) -> bind env x t) (bind env k Int) vars in
+  let env' = bind_all (bind env k Int) vars in
   let sum t op zero =
     match List.filter (fun (_, t') -> t' = t) vars with
     | [] -> zero
@@ -22,7 +26,7 @@ let pressure ctx env ty e =
   p
     "(%s let %s = (Sys.opaque_identity succ) %s in if %s = %s || %s > float_of_int %s \
      then %s else %s)"
-    (String.concat "" (List.map (fun (x, t) -> p "let %s : %s = %s in " x (show_ty t) (e env t)) vars))
+    (lets e env vars)
     k
     (e env Int)
     (sum Int " + " "0")
@@ -45,13 +49,13 @@ let many_args ctx env ty e =
       , choose ctx [ (fun () -> Int); (fun () -> Float); (fun () -> fo_ty ctx) ] ))
   in
   let env = closure env in
-  let inner = List.fold_left (fun env (x, t) -> bind env x t) (bind env n Int) params in
+  let inner = bind_all (bind env n Int) params in
   (* recursive calls mostly pass parameters through, to keep programs small *)
   let arg env t =
     let same = List.filter (fun (_, t') -> t' = t) params in
-    if env != inner || same = [] || draw_silent ctx.tc (booleans ~p:0.3 ())
+    if env != inner || same = [] || flip ~p:0.3 ctx
     then e env t
-    else fst (List.nth same (int_in ctx 0 (List.length same - 1)))
+    else fst (pick ctx same)
   in
   let args env first =
     let bound = List.map (fun (_, t) -> fresh ctx "b", t, arg env t) params in
@@ -64,7 +68,7 @@ let many_args ctx env ty e =
   p
     "(let%s rec %s (%s : int) %s : %s = if %s <= 0 then %s else (%s%s %s) in let %s = %s \
      land 7 in %s%s %s)"
-    (choose ctx [ (fun () -> ""); (fun () -> "[@inline never]") ])
+    (pick ctx [ ""; "[@inline never]" ])
     go
     n
     (String.concat " " (List.map (fun (x, t) -> p "(%s : %s)" x (show_ty t)) params))
@@ -87,15 +91,9 @@ let gc ctx env ty e =
   let vars = List.init (int_in ctx 2 6) (fun _ -> fresh ctx "g", fo_ty ctx) in
   p
     "(%s%s; %s)"
-    (String.concat "" (List.map (fun (x, t) -> p "let %s : %s = %s in " x (show_ty t) (e env t)) vars))
-    (choose
-       ctx
-       [ (fun () -> "Gc.minor ()")
-       ; (fun () -> "Gc.minor ()")
-       ; (fun () -> "Gc.full_major ()")
-       ; (fun () -> "Gc.compact ()")
-       ])
-    (e (List.fold_left (fun env (x, t) -> bind env x t) env vars) ty)
+    (lets e env vars)
+    (pick ctx [ "Gc.minor ()"; "Gc.minor ()"; "Gc.full_major ()"; "Gc.compact ()" ])
+    (e (bind_all env vars) ty)
 ;;
 
 (* A string read at an offset inside the string's padding. *)
