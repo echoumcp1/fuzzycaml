@@ -20,7 +20,11 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   let ctx = { tc; next = 0; decls = [||]; effects = []; used = Hashtbl.create 64 } in
   ox_mode := ox;
   poly_parent := [];
-  features := List.filter (fun _ -> draw_silent tc (booleans ())) all_features;
+  let forced =
+    Option.fold ~none:[] ~some:(String.split_on_char ',') (Sys.getenv_opt "FUZZYCAML_FEATURES")
+  in
+  features
+  := List.filter (fun f -> draw_silent tc (booleans ()) || List.mem f forced) all_features;
   use_effect_syntax := effect_syntax;
   mixed := [||];
   urec := [||];
