@@ -33,7 +33,7 @@ let immediate = function
    use computed values rather than literals. *)
 let from_env ctx env extract fallback =
   let all = env.vars @ env.locals in
-  let unused = List.filter (fun (x, _) -> not (Hashtbl.mem ctx.used x)) all in
+  let unused = unused ctx all in
   let found vars = List.filter_map (fun (_, t) -> extract t) vars in
   (* Prefer unused variables, so that parameters get used. *)
   match found unused, found all with

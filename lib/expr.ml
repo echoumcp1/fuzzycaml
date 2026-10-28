@@ -12,7 +12,7 @@ let rec expr ctx env ty depth =
   span ctx (fun () ->
     let e env t = expr ctx env t (depth - 1) in
     let vars = List.filter (fun (_, t) -> t = ty) (env.vars @ env.muts) in
-    let unused = List.filter (fun (x, _) -> not (Hashtbl.mem ctx.used x)) vars in
+    let unused = unused ctx vars in
     let use (x, _) =
       Hashtbl.replace ctx.used x ();
       x

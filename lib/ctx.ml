@@ -25,6 +25,9 @@ let choose ctx options = pick ctx options ()
 let indexed_decls ctx = List.mapi (fun i d -> i, d) (Array.to_list ctx.decls)
 let p = Printf.sprintf
 
+(* The variables the program does not refer to yet. *)
+let unused ctx vars = List.filter (fun (x, _) -> not (Hashtbl.mem ctx.used x)) vars
+
 (* Parenthesises a negative literal. *)
 let paren s = if String.length s > 0 && s.[0] = '-' then p "(%s)" s else s
 
