@@ -1,0 +1,4 @@
+(executable
+ (name fuzzycaml)
+ (flags (:standard -open Fuzzycaml_lib))
+ (libraries fuzzycaml_lib hegel unix))

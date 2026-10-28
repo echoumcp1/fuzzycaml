@@ -1,0 +1,3 @@
+(library
+ (name fuzzycaml_lib)
+ (libraries hegel))
