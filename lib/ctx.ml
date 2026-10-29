@@ -11,7 +11,7 @@ type ctx =
 
 let fresh ctx prefix =
   ctx.next <- ctx.next + 1;
-  Printf.sprintf "%s%d" prefix ctx.next
+  [%string "%{prefix}%{ctx.next#Int}"]
 ;;
 
 let int_in ctx lo hi = draw_silent ctx.tc (integers ~min_value:lo ~max_value:hi ())

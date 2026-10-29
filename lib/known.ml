@@ -78,36 +78,37 @@ let known_bug backends results source =
            (* -flambda2-reaper with phantom lets aborts at run time. *)
            | Ran (_, _, err) -> contains err "Dead variable in bound pattern")
         (List.combine backends results)
-      ||
       (* After a nested perform, native code leaves a shallow fiber's effect
          handler pointing into the minor heap, and the GC later crashes. Matches
          only if every crashing backend, rebuilt with the debug runtime, fails
          the runtime's check for it. *)
-      (List.for_all
-         (fun r ->
-            agrees r
-            ||
-            match r with
-            | Ran (Signaled s, _, _) -> List.mem s Sys.[ sigbus; sigsegv; sigabrt; sigtrap ]
-            | _ -> false)
-         results
-       && List.for_all
-            (function
-              | Ran (_, _, err) -> contains err "Assertion failed: !Is_young(v)"
-              | Compile_error _ -> false)
-            (run_all
-               (List.map (fun b -> { b with argv = b.argv @ [ "-runtime-variant"; "d" ] }) odd)
-               source))
-      ||
+      || (List.for_all
+            (fun r ->
+               agrees r
+               ||
+               match r with
+               | Ran (Signaled s, _, _) ->
+                 List.mem s Sys.[ sigbus; sigsegv; sigabrt; sigtrap ]
+               | _ -> false)
+            results
+          && List.for_all
+               (function
+                 | Ran (_, _, err) -> contains err "Assertion failed: !Is_young(v)"
+                 | Compile_error _ -> false)
+               (run_all
+                  (List.map
+                     (fun b -> { b with argv = b.argv @ [ "-runtime-variant"; "d" ] })
+                     odd)
+                  source))
       (* Trunk -linscan ignores the interference that keeps the results of
          native Atomic exchange, compare-and-set and fetch-and-add out of their
          arguments' registers. Matches only if the odd backends agree once those
          are ordinary calls. *)
-      (contains source "Atomic."
-       && List.for_all
-            (fun n -> contains n "trunk" && String.ends_with ~suffix:"-linscan" n)
-            odd_names
-       && odd_agree Fun.id (atomic_shim ^ source))
+      || (contains source "Atomic."
+          && List.for_all
+               (fun n -> contains n "trunk" && String.ends_with ~suffix:"-linscan" n)
+               odd_names
+          && odd_agree Fun.id (atomic_shim ^ source))
       ||
       (* Flambda's -Oclassic reads a constant field of a lifted block as the
          block itself. Matches only if the odd backends agree when compiled by

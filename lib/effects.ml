@@ -33,7 +33,8 @@ let arm ctx env ty e ~resume ~discontinue (_, a, r) =
       ctx
       ([ resumed
        ; (fun () ->
-           [%string "(let %{res} : %{show_ty ty} = %{resumed ()} in %{e (bind henv res ty) ty})"])
+           [%string
+             "(let %{res} : %{ty#Ty} = %{resumed ()} in %{e (bind henv res ty) ty})"])
        ; (fun () -> [%string "(ignore %{k}; %{e henv ty})"])
        ]
        @
@@ -42,7 +43,7 @@ let arm ctx env ty e ~resume ~discontinue (_, a, r) =
        else []) )
 ;;
 
-let deep_resume k v r = [%string "Effect.Deep.continue %{k} (%{v} : %{show_ty r})"]
+let deep_resume k v r = [%string "Effect.Deep.continue %{k} (%{v} : %{r#Ty})"]
 
 (* A handler's exnc: it catches Exit if [catch]. *)
 let exnc env ty e catch =
@@ -53,7 +54,8 @@ let exnc env ty e catch =
    in a body of type [ty]. *)
 let perform_let ctx env e (c, a, r) ty =
   let y = fresh ctx "y" in
-  [%string "(let %{y} : %{show_ty r} = Effect.perform (%{c} %{e env a}) in %{e (bind env y r) ty})"]
+  [%string
+    "(let %{y} : %{r#Ty} = Effect.perform (%{c} %{e env a}) in %{e (bind env y r) ty})"]
 ;;
 
 (* A deep handler for some of the program's effects around a body of type [b]. *)
@@ -63,12 +65,14 @@ let handler ctx env ty e =
   let exnc = exnc env ty e catch in
   let arm ((c, _, _) as eff) =
     let v, k, body = arm ctx env ty e ~resume:deep_resume ~discontinue:true eff in
-    [%string "| %{c} %{v} -> Some (fun (%{k} : (a, %{show_ty ty}) Effect.Deep.continuation) -> %{body})"]
+    [%string
+      "| %{c} %{v} -> Some (fun (%{k} : (a, %{ty#Ty}) Effect.Deep.continuation) -> \
+       %{body})"]
   in
   p
     "(Effect.Deep.match_with (fun () -> %s) () { Effect.Deep.retc = (fun (%s : %s) -> \
-     %s); exnc = %s; effc = (fun (type a) (eff : a Effect.t) -> match eff with %s | _ \
-     -> None) })"
+     %s); exnc = %s; effc = (fun (type a) (eff : a Effect.t) -> match eff with %s | _ -> \
+     None) })"
     (let eff = pick ctx handled in
      if flip ctx then perform_let ctx body_env e eff b else e body_env b)
     x
@@ -89,7 +93,9 @@ let shallow ctx env ty e =
   let arm ((c, _, _) as eff) =
     let resume k v _ = [%string "%{go} %{k} %{v}"] in
     let v, k, body = arm ctx env ty e ~resume ~discontinue:false eff in
-    [%string "| %{c} %{v} -> Some (fun (%{k} : (a, %{show_ty b}) Effect.Shallow.continuation) -> %{body})"]
+    [%string
+      "| %{c} %{v} -> Some (fun (%{k} : (a, %{b#Ty}) Effect.Shallow.continuation) -> \
+       %{body})"]
   in
   p
     "(let rec %s : type %s. (%s, %s) Effect.Shallow.continuation -> %s -> %s = fun k v \

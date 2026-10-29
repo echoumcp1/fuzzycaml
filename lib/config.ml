@@ -1,4 +1,3 @@
-
 (* Whether OxCaml features are generated. *)
 let ox_mode = ref false
 let use_effect_syntax = ref false
@@ -12,12 +11,37 @@ let twins : (int * int) list ref = ref []
 (* Swarm testing: each program enables a random subset of features, and
    shrinking can disable the ones a failure does not need. *)
 let all_features =
-  [ "arrays"; "atomics"; "deep"; "effargs"; "effect_syntax"; "effects"; "exits"; "exns"; "gadt"; "gc"; "lazy"
-  ; "locals"; "loops"; "manyargs"; "modules"; "opaque"; "partial"; "poly"; "records"
-  ; "recvals"; "samebranch"; "shallow"; "strings"; "tmc"
-    (* OxCaml only *)
-  ; "mutables"; "numbers"; "or_null"; "urecords"; "utuples"
+  [ "arrays"
+  ; "atomics"
+  ; "deep"
+  ; "effargs"
+  ; "effect_syntax"
+  ; "effects"
+  ; "exits"
+  ; "exns"
+  ; "gadt"
+  ; "gc"
+  ; "lazy"
+  ; "locals"
+  ; "loops"
+  ; "manyargs"
+  ; "modules"
+  ; "opaque"
+  ; "partial"
+  ; "poly"
+  ; "records"
+  ; "recvals"
+  ; "samebranch"
+  ; "shallow"
+  ; "strings"
+  ; "tmc" (* OxCaml only *)
+  ; "mutables"
+  ; "numbers"
+  ; "or_null"
+  ; "urecords"
+  ; "utuples"
   ]
+;;
 
 let features = ref all_features
 let on feature = List.mem feature !features

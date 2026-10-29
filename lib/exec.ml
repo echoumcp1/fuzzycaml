@@ -78,7 +78,11 @@ type result =
 let find s sub =
   let n = String.length sub in
   let rec go i =
-    if i + n > String.length s then None else if String.sub s i n = sub then Some i else go (i + 1)
+    if i + n > String.length s
+    then None
+    else if String.sub s i n = sub
+    then Some i
+    else go (i + 1)
   in
   go 0
 ;;
@@ -127,7 +131,9 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
          if String.starts_with ~prefix:"ocamlc" (Filename.basename c)
          then (
            let d = List.mem "d" b.argv in
-           [ Filename.concat (Filename.dirname c) (if d then "ocamlrund" else "ocamlrun"); exe dir ])
+           [ Filename.concat (Filename.dirname c) (if d then "ocamlrund" else "ocamlrun")
+           ; exe dir
+           ])
          else [ exe dir ]
        in
        let compiles =
@@ -191,6 +197,7 @@ let report backends results =
     []
     backends
     results
-  |> List.map (fun (text, names) -> [%string {|--- %{String.concat ", " names}: %{text}|}])
+  |> List.map (fun (text, names) ->
+    [%string {|--- %{String.concat ", " names}: %{text}|}])
   |> String.concat "\n"
 ;;

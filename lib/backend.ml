@@ -1,4 +1,3 @@
-
 let p = Printf.sprintf
 
 type backend =
@@ -48,28 +47,43 @@ let discover ~ox =
       let libs ext =
         if ox
         then
-          [ "-I"; "+stdlib_stable"; "-I"; "+stdlib_upstream_compatible"; "stdlib_stable" ^ ext
+          [ "-I"
+          ; "+stdlib_stable"
+          ; "-I"
+          ; "+stdlib_upstream_compatible"
+          ; "stdlib_stable" ^ ext
           ; "stdlib_upstream_compatible" ^ ext
           ]
         else []
       in
       (* native code, with the compiler's invariant checks *)
       let nat flags =
-        (ocamlopt :: "-dcmm-invariants" :: (if flambda then [ "-dflambda-invariants" ] else []))
+        (ocamlopt
+         :: "-dcmm-invariants"
+         :: (if flambda then [ "-dflambda-invariants" ] else []))
         @ libs ".cmxa"
         @ flags
       in
-      let opt suffix flags = { name = [%string "%{switch}/ocamlopt%{suffix}"]; argv = nat flags } in
+      let opt suffix flags =
+        { name = [%string "%{switch}/ocamlopt%{suffix}"]; argv = nat flags }
+      in
       (* the reference: bytecode with the debug runtime *)
       let byte =
-        { name = [%string "%{switch}/ocamlc"]; argv = (ocamlc :: libs ".cma") @ [ "-runtime-variant"; "d" ] }
+        { name = [%string "%{switch}/ocamlc"]
+        ; argv = (ocamlc :: libs ".cma") @ [ "-runtime-variant"; "d" ]
+        }
       in
       if ox
       then
         if not flambda2
         then []
         else
-          [ byte; opt "-Oclassic" [ "-Oclassic" ]; opt "" []; opt "-O3" [ "-O3" ]; opt "-toggles" [] ]
+          [ byte
+          ; opt "-Oclassic" [ "-Oclassic" ]
+          ; opt "" []
+          ; opt "-O3" [ "-O3" ]
+          ; opt "-toggles" []
+          ]
       else if flambda2
       then []
       else
@@ -82,14 +96,24 @@ let discover ~ox =
           ; opt "-O3-linscan" [ "-O3"; "-linscan" ]
           ; opt
               "-O3-aggressive"
-              [ "-O3"; "-unbox-closures"; "-inline"; "1000"; "-rounds"; "4"
-              ; "-inline-max-depth"; "3"; "-remove-unused-arguments"; "-unsafe"
-              ; "-runtime-variant"; "d"
+              [ "-O3"
+              ; "-unbox-closures"
+              ; "-inline"
+              ; "1000"
+              ; "-rounds"
+              ; "4"
+              ; "-inline-max-depth"
+              ; "3"
+              ; "-remove-unused-arguments"
+              ; "-unsafe"
+              ; "-runtime-variant"
+              ; "d"
               ]
           ]
         else
           (* programs do not rely on bounds checks *)
-          [ opt "-unsafe-inline" [ "-unsafe"; "-inline"; "1000"; "-runtime-variant"; "d" ] ]))
+          [ opt "-unsafe-inline" [ "-unsafe"; "-inline"; "1000"; "-runtime-variant"; "d" ]
+          ]))
 ;;
 
 (* FUZZYCAML_EXTRA="name=compiler flags..;name2=..." adds backends. *)
@@ -119,8 +143,7 @@ let effect_syntax ~ox backends =
           match read_process [| List.hd b.argv; "-version" |] with
           | Some v ->
             (match String.split_on_char '.' (String.trim v) with
-             | major :: minor :: _ ->
-               (int_of_string major, int_of_string minor) >= (5, 3)
+             | major :: minor :: _ -> (int_of_string major, int_of_string minor) >= (5, 3)
              | _ -> false)
           | None -> false)
        backends

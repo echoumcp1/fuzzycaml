@@ -44,8 +44,14 @@ let rec float_literal ctx =
    one ulp off, and NaNs with payloads. *)
 and float_bits ctx =
   let edge =
-    [ 1L; 0x000fffffffffffffL; 0x0010000000000000L; 0x7fefffffffffffffL; 0x7ff0000000000000L
-    ; 0x7ff0000000000001L; 0x7ff8000000000001L; 0x3ff0000000000000L
+    [ 1L
+    ; 0x000fffffffffffffL
+    ; 0x0010000000000000L
+    ; 0x7fefffffffffffffL
+    ; 0x7ff0000000000000L
+    ; 0x7ff0000000000001L
+    ; 0x7ff8000000000001L
+    ; 0x3ff0000000000000L
     ; Int64.bits_of_float (Float.ldexp 1. (int_in ctx (-1074) 1023))
     ]
   in
@@ -54,7 +60,17 @@ and float_bits ctx =
 ;;
 
 let float32_bits ctx =
-  let edge = [ 1l; 0x007fffffl; 0x00800000l; 0x7f7fffffl; 0x7f800000l; 0x7f800001l; 0x7fc00001l; 0x3f800000l ] in
+  let edge =
+    [ 1l
+    ; 0x007fffffl
+    ; 0x00800000l
+    ; 0x7f7fffffl
+    ; 0x7f800000l
+    ; 0x7f800001l
+    ; 0x7fc00001l
+    ; 0x3f800000l
+    ]
+  in
   let bits = Int32.add (pick ctx edge) (Int32.of_int (int_in ctx (-1) 1)) in
   paren (p "%ldl" (if flip ctx then Int32.logor bits Int32.min_int else bits))
 ;;
@@ -162,10 +178,9 @@ let rec literal ctx ty =
       ; (fun () -> [%string "[%{literal ctx t}]"])
       ; (fun () -> [%string "[%{literal ctx t}; %{literal ctx t}; %{literal ctx t}]"])
       ]
-  | Option t ->
-    if flip ctx then [%string "(Some %{literal ctx t})"] else "None"
+  | Option t -> if flip ctx then [%string "(Some %{literal ctx t})"] else "None"
   | Pair (a, b) -> [%string "(%{literal ctx a}, %{literal ctx b})"]
-  | Arrow (a, b) -> [%string "(fun (_ : %{show_ty a}) -> %{literal ctx b})"]
+  | Arrow (a, b) -> [%string "(fun (_ : %{a#Ty}) -> %{literal ctx b})"]
   | U UF ->
     choose
       ctx
@@ -176,9 +191,11 @@ let rec literal ctx ty =
       ]
   | Num _ | U _ -> num_literal ctx ty
   | UTuple ts -> [%string {|#(%{String.concat ", " (List.map (literal ctx) ts)})|}]
-  | Or_null t ->
-    if flip ctx then [%string "(This %{literal ctx t})"] else "Null"
-  | Arr t -> p "[| %s |]" (String.concat "; " (List.init (int_in ctx 1 3) (fun _ -> literal ctx t)))
+  | Or_null t -> if flip ctx then [%string "(This %{literal ctx t})"] else "Null"
+  | Arr t ->
+    p
+      "[| %s |]"
+      (String.concat "; " (List.init (int_in ctx 1 3) (fun _ -> literal ctx t)))
   | Named i ->
     (match ctx.decls.(i) with
      | Record fields ->
@@ -191,7 +208,12 @@ let rec literal ctx ty =
        let c, args = pick ctx constrs in
        construct c (List.map (literal ctx) args)
      | URecord fields ->
-       [%string {|#{ %{String.concat "; " (List.map (fun (f, t) -> p "%s = %s" f (literal ctx t)) fields)} }|}])
+       let fields =
+         String.concat
+           "; "
+           (List.map (fun (f, t) -> [%string "%{f} = %{literal ctx t}"]) fields)
+       in
+       [%string "#{ %{fields} }"])
 
 and construct c = function
   | [] -> c
@@ -209,7 +231,12 @@ let rec raise_at ctx ty =
   | Named i ->
     (match ctx.decls.(i) with
      | URecord fields ->
-       [%string {|#{ %{String.concat "; " (List.map (fun (f, t) -> p "%s = %s" f (raise_at ctx t)) fields)} }|}]
+       let fields =
+         String.concat
+           "; "
+           (List.map (fun (f, t) -> [%string "%{f} = %{raise_at ctx t}"]) fields)
+       in
+       [%string "#{ %{fields} }"]
      | _ -> "(raise Exit)")
   | _ -> "(raise Exit)"
 ;;

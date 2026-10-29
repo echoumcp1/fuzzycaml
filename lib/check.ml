@@ -36,7 +36,10 @@ let check ~ox ~effect_syntax backends tc =
   (* -dcmm-invariants rejects calls that return unboxed tuples or records. *)
   let backends =
     if ox && (contains source "#(" || contains source "#{")
-    then List.map (fun b -> { b with argv = List.filter (( <> ) "-dcmm-invariants") b.argv }) backends
+    then
+      List.map
+        (fun b -> { b with argv = List.filter (( <> ) "-dcmm-invariants") b.argv })
+        backends
     else backends
   in
   (* Trunk -linscan miscompiles native atomics (see [known_bug]), so they are
@@ -62,7 +65,12 @@ let check ~ox ~effect_syntax backends tc =
         then "compiler crash: no backend compiled the program\n"
         else "generator bug: no backend compiled the program\n")
        ^ report backends results));
-  if List.exists (function Ran (Timeout, _, _) -> true | _ -> false) results
+  if
+    List.exists
+      (function
+        | Ran (Timeout, _, _) -> true
+        | _ -> false)
+      results
   then (
     incr timeouts;
     assume tc false);

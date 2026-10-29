@@ -9,9 +9,7 @@ let gen_decl ctx =
   then (
     let all_float = flip ~p:0.3 ctx in
     let float = if !ox_mode && flip ctx then float_u else Float in
-    let unboxed () =
-      if on "numbers" then U (pick ctx all_ub) else float_u
-    in
+    let unboxed () = if on "numbers" then U (pick ctx all_ub) else float_u in
     Record
       (repeat ctx 1 4 (fun _ ->
          let f = fresh ctx "f" in

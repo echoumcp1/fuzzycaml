@@ -15,16 +15,18 @@ let partial ctx env ty e =
       (fun (params, env) i ->
          let x = fresh ctx "a" in
          let kind =
-           if i = n - 1 then `Pos else choose ctx [ (fun () -> `Pos); (fun () -> `Lab); (fun () -> `Opt) ]
+           if i = n - 1
+           then `Pos
+           else choose ctx [ (fun () -> `Pos); (fun () -> `Lab); (fun () -> `Opt) ]
          in
          let t = if kind = `Pos then top_ty ctx else any_ty ctx in
          let decl =
            match kind with
-           | `Pos -> [%string "(%{x} : %{show_ty t})"]
-           | `Lab -> [%string "~(%{x} : %{show_ty t})"]
-           | `Opt -> [%string "?(%{x} : %{show_ty t} = %{e env t})"]
+           | `Pos -> [%string "(%{x} : %{t#Ty})"]
+           | `Lab -> [%string "~(%{x} : %{t#Ty})"]
+           | `Opt -> [%string "?(%{x} : %{t#Ty} = %{e env t})"]
          in
-         params @ [ (x, t, kind, decl) ], bind env x t)
+         params @ [ x, t, kind, decl ], bind env x t)
       ([], env)
       (List.init n Fun.id)
   in
@@ -90,26 +92,33 @@ let partial ctx env ty e =
         [%string "(%{head} %{first})"]
         rest
   in
-  [%string {|(let%{attr} %{f} %{String.concat " " (List.map (fun (_, _, _, d) -> d) params)} : %{show_ty ty} = %{e body_env ty} in %{call})|}]
+  let decls = String.concat " " (List.map (fun (_, _, _, d) -> d) params) in
+  [%string "(let%{attr} %{f} %{decls} : %{ty#Ty} = %{e body_env ty} in %{call})"]
 ;;
 
 let atomic_op ctx env a ty e =
   (* let-bound because argument evaluation order is unspecified and differs between ocamlc and ocamlopt *)
   let cas seen v =
-    let x = fresh ctx "c" and y = fresh ctx "c" in
-    [%string "(let %{x} = %{seen} in let %{y} = %{v} in Atomic.compare_and_set %{a} %{x} %{y})"]
+    let x = fresh ctx "c"
+    and y = fresh ctx "c" in
+    [%string
+      "(let %{x} = %{seen} in let %{y} = %{v} in Atomic.compare_and_set %{a} %{x} %{y})"]
   in
   (* keeps the old value live, so it may be spilled *)
   let keep_old op v =
     let o = fresh ctx "old" in
-    [%string "(let %{o} = %{op} %{a} %{v} in ignore (Sys.opaque_identity %{e (bind env o ty) ty}))"]
+    [%string
+      "(let %{o} = %{op} %{a} %{v} in ignore (Sys.opaque_identity %{e (bind env o ty) \
+       ty}))"]
   in
   choose
     ctx
     ([ (fun () -> [%string "Atomic.set %{a} %{e env ty}"])
      ; (fun () -> [%string "ignore (Atomic.exchange %{a} %{e env ty})"])
      ; (fun () -> keep_old "Atomic.exchange" (e env ty))
-     ; (fun () -> [%string {|ignore %{cas (p "Atomic.get %s" a) (e env ty)}|}])
+     ; (fun () ->
+         let get = [%string "Atomic.get %{a}"] in
+         [%string "ignore %{cas get (e env ty)}"])
      ; (fun () -> [%string "ignore %{cas (e env ty) (e env ty)}"])
      ; (fun () ->
          p
@@ -137,7 +146,10 @@ let local_atomic ctx env ty e =
   let i = fresh ctx "i" in
   let body = bind (bind env [%string "(Atomic.get %{a})"] ty) i Int in
   let ops = List.init (int_in ctx 1 3) (fun _ -> atomic_op ctx body a ty e) in
-  [%string {|(let %{a} = Atomic.make %{e env ty} in for %{i} = 0 to (%{e env Int} land 7) do %{String.concat "; " ops} done; Atomic.get %{a})|}]
+  let ops = String.concat "; " ops in
+  [%string
+    "(let %{a} = Atomic.make %{e env ty} in for %{i} = 0 to (%{e env Int} land 7) do \
+     %{ops} done; Atomic.get %{a})"]
 ;;
 
 (* A local exception carrying a value, raised from a function and caught by
@@ -181,16 +193,25 @@ let local_exn ctx env ty e =
 
 (* A deferred computation, forced where its value is used. *)
 let lazy_value ctx env ty e =
-  let s = from_env ctx env (fun t -> if restricted t then None else Some t) (fun () -> any_ty ctx) in
+  let s =
+    from_env
+      ctx
+      env
+      (fun t -> if restricted t then None else Some t)
+      (fun () -> any_ty ctx)
+  in
   let l = fresh ctx "lz" in
   let x = fresh ctx "x" in
   let body = e (lazy_body env) s in
   choose
     ctx
     [ (fun () ->
-        [%string {|(let %{l} = lazy %{body} in %{e (bind env (p "(Lazy.force %s)" l) s) ty})|}])
-    ; (fun () -> [%string "(match lazy %{body} with lazy %{x} -> %{e (bind env x s) ty})"])
-    ; (fun () -> [%string "(Lazy.force (Lazy.from_fun (fun () -> %{e (lazy_body env) ty})))"])
+        let force = [%string "(Lazy.force %{l})"] in
+        [%string "(let %{l} = lazy %{body} in %{e (bind env force s) ty})"])
+    ; (fun () ->
+        [%string "(match lazy %{body} with lazy %{x} -> %{e (bind env x s) ty})"])
+    ; (fun () ->
+        [%string "(Lazy.force (Lazy.from_fun (fun () -> %{e (lazy_body env) ty})))"])
     ]
 ;;
 
@@ -202,17 +223,23 @@ let rec_value ctx env ty e =
   let body env = e (bind (closure env) n Int) ty in
   [ (fun () ->
       let l = fresh ctx "lz" in
-      [%string "(let rec %{l} : %{show_ty ty} Lazy.t = lazy %{e (lazy_body env) ty} and %{f} : int -> %{show_ty ty} = fun %{n} -> if %{n} <= 0 \
-         then Lazy.force %{l} else %{f} (%{n} - 1) in %{f} (%{e env Int} land 7))"])
+      [%string
+        "(let rec %{l} : %{ty#Ty} Lazy.t = lazy %{e (lazy_body env) ty} and %{f} : int \
+         -> %{ty#Ty} = fun %{n} -> if %{n} <= 0 then Lazy.force %{l} else %{f} (%{n} - \
+         1) in %{f} (%{e env Int} land 7))"])
   ; (fun () ->
       let v = fresh ctx "v" in
       let pr = fresh ctx "pr" in
-      [%string "(let %{v} : %{show_ty ty} = %{e env ty} in let rec %{pr} = (%{f}, %{v}) and %{f} : int -> %{show_ty ty} = fun %{n} -> if %{n} \
-         <= 0 then snd %{pr} else (fst %{pr}) (%{n} - 1) in (fst %{pr}) (%{e env Int} land 7))"])
+      [%string
+        "(let %{v} : %{ty#Ty} = %{e env ty} in let rec %{pr} = (%{f}, %{v}) and %{f} : \
+         int -> %{ty#Ty} = fun %{n} -> if %{n} <= 0 then snd %{pr} else (fst %{pr}) \
+         (%{n} - 1) in (fst %{pr}) (%{e env Int} land 7))"])
   ; (fun () ->
       let g = fresh ctx "g" in
-      [%string "(let rec %{f} (%{n} : int) : %{show_ty ty} = if %{n} <= 0 then %{body env} else %{g} (%{n} - 1) and %{g} (%{n} : \
-         int) : %{show_ty ty} = if %{n} <= 0 then %{body env} else %{f} (%{n} - 1) in %{f} (%{e env Int} land 15))"])
+      [%string
+        "(let rec %{f} (%{n} : int) : %{ty#Ty} = if %{n} <= 0 then %{body env} else %{g} \
+         (%{n} - 1) and %{g} (%{n} : int) : %{ty#Ty} = if %{n} <= 0 then %{body env} \
+         else %{f} (%{n} - 1) in %{f} (%{e env Int} land 15))"])
   ]
   @
   match ty with
@@ -221,8 +248,9 @@ let rec_value ctx env ty e =
         let a = fresh ctx "a" in
         let b = fresh ctx "b" in
         let c = fresh ctx "c" in
-        [%string "(let %{a} : %{show_ty t} = %{e env t} in let %{b} : %{show_ty t} = %{e env t} in let rec %{c} = %{a} :: %{b} :: %{c} in take \
-           (%{e env Int} land 15) %{c})"])
+        [%string
+          "(let %{a} : %{t#Ty} = %{e env t} in let %{b} : %{t#Ty} = %{e env t} in let \
+           rec %{c} = %{a} :: %{b} :: %{c} in take (%{e env Int} land 15) %{c})"])
     ]
   | _ -> []
 ;;
@@ -235,7 +263,7 @@ let tmc ctx env t e =
   let x = fresh ctx "x" in
   let env' = bind (closure env) n Int in
   let call = [%string "%{go} (%{n} - 1)"] in
-  let cons () = [%string "(let %{x} : %{show_ty t} = %{e env' t} in %{x} :: %{call})"] in
+  let cons () = [%string "(let %{x} : %{t#Ty} = %{e env' t} in %{x} :: %{call})"] in
   let step =
     choose
       ctx
@@ -243,15 +271,18 @@ let tmc ctx env t e =
       ; (fun () -> [%string "(if %{e env' Bool} then %{cons ()} else %{call})"])
       ; (fun () ->
           let h = fresh ctx "h" in
-          [%string "(match %{e env' (List t)} with [] -> %{call} | %{h} :: _ -> %{h} :: %{call})"])
+          [%string
+            "(match %{e env' (List t)} with [] -> %{call} | %{h} :: _ -> %{h} :: %{call})"])
       ; (fun () ->
           let y = fresh ctx "y" in
-          [%string "(let %{x} : %{show_ty t} = %{e env' t} in let %{y} : %{show_ty t} = %{e env' t} \
-                    in %{x} :: %{y} :: %{call})"])
+          [%string
+            "(let %{x} : %{t#Ty} = %{e env' t} in let %{y} : %{t#Ty} = %{e env' t} in \
+             %{x} :: %{y} :: %{call})"])
       ]
   in
-  [%string "(let[@tail_mod_cons] rec %{go} (%{n} : int) : %{show_ty (List t)} = if %{n} <= 0 then %{e env' (List t)} else %{step} in \
-     (%{go}[@tailcall false]) (%{e env Int} land 15))"]
+  [%string
+    "(let[@tail_mod_cons] rec %{go} (%{n} : int) : %{(List t)#Ty} = if %{n} <= 0 then \
+     %{e env' (List t)} else %{step} in (%{go}[@tailcall false]) (%{e env Int} land 15))"]
 ;;
 
 let nonzero64 ctx =
@@ -301,13 +332,15 @@ let effectful ctx env ty e =
            let y = fresh ctx "y" in
            let s = env_ty ctx env some_ty in
            let body = e (bind (bind (closure env) x s) y Int) ty in
-           [%string "(let %{g} = (ticks := !ticks + %{int_in ctx 1 99#Int}; fun (%{x} : \
-                     %{show_ty s}) (%{y} : int) -> %{body}) %{paren (e env s)} in let _ = %{g} \
-                     %{paren (e env Int)} in %{g} %{paren (e env Int)})"])
+           [%string
+             "(let %{g} = (ticks := !ticks + %{int_in ctx 1 99#Int}; fun (%{x} : \
+              %{s#Ty}) (%{y} : int) -> %{body}) %{paren (e env s)} in let _ = %{g} \
+              %{paren (e env Int)} in %{g} %{paren (e env Int)})"])
        ; (fun () ->
            let x = fresh ctx "x" in
-           [%string "(ignore ((ticks := !ticks + %{int_in ctx 1 99#Int}; fun (%{x} : int) (_ : int) \
-                     -> %{e (bind (closure env) x Int) Int}) 0); %{e env ty})"])
+           [%string
+             "(ignore ((ticks := !ticks + %{int_in ctx 1 99#Int}; fun (%{x} : int) (_ : \
+              int) -> %{e (bind (closure env) x Int) Int}) 0); %{e env ty})"])
        ]
      else [])
   @
@@ -320,8 +353,14 @@ let effectful ctx env ty e =
     ; (fun () ->
         let op = pick ctx [ "/"; "mod" ] in
         (* -unsafe drops the zero check unless the divisor is a literal *)
-        let d = choose ctx [ (fun () -> "0"); (fun () -> [%string "(ticks := !ticks + \
-                                                               %{int_in ctx 1 99#Int}; %{nonzero ctx})"]) ] in
+        let d =
+          choose
+            ctx
+            [ (fun () -> "0")
+            ; (fun () ->
+                [%string "(ticks := !ticks + %{int_in ctx 1 99#Int}; %{nonzero ctx})"])
+            ]
+        in
         let n = choose ctx [ (fun () -> "0"); tick Int ] in
         [%string "(try %{n} %{op} %{d} with Division_by_zero -> %{e env Int})"])
     ]
@@ -329,9 +368,17 @@ let effectful ctx env ty e =
     [ (fun () -> [%string "(Int64.mul %{tick Int64 ()} 0L)"])
     ; (fun () ->
         let f = pick ctx [ "Int64.div"; "Int64.rem" ] in
-        let d = choose ctx [ (fun () -> "0L"); (fun () -> let k = Literal.int64_lit (nonzero64 ctx) in [%string "(ticks := !ticks + \
-                                                                                %{int_in ctx 1 99#Int}; %{k})"]) ] in
-        [%string "(try %{f} %{tick Int64 ()} %{d} with Division_by_zero -> %{e env Int64})"])
+        let d =
+          choose
+            ctx
+            [ (fun () -> "0L")
+            ; (fun () ->
+                let k = Literal.int64_lit (nonzero64 ctx) in
+                [%string "(ticks := !ticks + %{int_in ctx 1 99#Int}; %{k})"])
+            ]
+        in
+        [%string
+          "(try %{f} %{tick Int64 ()} %{d} with Division_by_zero -> %{e env Int64})"])
     ]
   | _ -> []
 ;;

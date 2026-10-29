@@ -21,7 +21,10 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   ox_mode := ox;
   poly_parent := [];
   let forced =
-    Option.fold ~none:[] ~some:(String.split_on_char ',') (Sys.getenv_opt "FUZZYCAML_FEATURES")
+    Option.fold
+      ~none:[]
+      ~some:(String.split_on_char ',')
+      (Sys.getenv_opt "FUZZYCAML_FEATURES")
   in
   features
   := List.filter (fun f -> draw_silent tc (booleans ()) || List.mem f forced) all_features;
@@ -30,7 +33,8 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   urec := [||];
   twins := [];
   convs := [];
-  let head = p "(* features: %s *)\n%s" (String.concat " " !features) (prelude ()) in
+  let enabled = String.concat " " !features in
+  let head = [%string "(* features: %{enabled} *)\n%{prelude ()}"] in
   let buf = Buffer.create 1024 in
   let add decl =
     let i = Array.length ctx.decls in
@@ -44,7 +48,13 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
              | Variant constrs ->
                List.exists (fun (_, args) -> List.exists has_float_u args) constrs)
          |];
-    urec := Array.append !urec [| (match decl with URecord _ -> true | _ -> false) |];
+    urec
+    := Array.append
+         !urec
+         [| (match decl with
+             | URecord _ -> true
+             | _ -> false)
+         |];
     let parent =
       Option.map
         (fun j ->
@@ -57,7 +67,8 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     i
   in
   let urecords = ox && on "urecords" in
-  ignore @@ repeat ctx 0 4 (fun _ ->
+  ignore
+  @@ repeat ctx 0 4 (fun _ ->
     let decl = gen_decl ctx in
     let i = add decl in
     (match decl with
@@ -81,21 +92,29 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     ctx.effects
     <- repeat ctx 1 3 (fun _ ->
          let c = fresh ctx "E" in
-         let base () = choose ctx [ (fun () -> Int); (fun () -> Bool); (fun () -> fo_ty ctx) ] in
+         let base () =
+           choose ctx [ (fun () -> Int); (fun () -> Bool); (fun () -> fo_ty ctx) ]
+         in
          let a = base () in
          let r = base () in
-         Buffer.add_string buf [%string "type _ Effect.t += %{c} : %{show_ty a} -> %{show_ty r} Effect.t\n"];
+         Buffer.add_string
+           buf
+           [%string "type _ Effect.t += %{c} : %{a#Ty} -> %{r#Ty} Effect.t\n"];
          c, a, r);
-  let env = ref { vars = []; locals = []; in_try = false; effs = []; muts = []; in_fun = false } in
+  let env =
+    ref { vars = []; locals = []; in_try = false; effs = []; muts = []; in_fun = false }
+  in
   let globals =
-    List.init (if on "atomics" then int_in ctx 0 2 else 0) (fun _ ->
-      let g = fresh ctx "g" in
-      let ty = if flip ctx then Bool else Int in
-      Buffer.add_string
-        buf
-        [%string "let %{g} : %{show_ty ty} Atomic.t = Atomic.make %{literal ctx ty}\n"];
-      env := bind !env [%string "(Atomic.get %{g})"] ty;
-      g, ty)
+    List.init
+      (if on "atomics" then int_in ctx 0 2 else 0)
+      (fun _ ->
+         let g = fresh ctx "g" in
+         let ty = if flip ctx then Bool else Int in
+         Buffer.add_string
+           buf
+           [%string "let %{g} : %{ty#Ty} Atomic.t = Atomic.make %{literal ctx ty}\n"];
+         env := bind !env [%string "(Atomic.get %{g})"] ty;
+         g, ty)
   in
   let statement () =
     match globals with
@@ -105,10 +124,13 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
       let e env t = expr ctx env t (depth - 1) in
       Buffer.add_string
         buf
-        [%string "let () = %{atomic_op ctx !env g ty e}\nlet () = print_endline (%{printer ty} (Atomic.get %{g}))\n"]
+        [%string
+          "let () = %{atomic_op ctx !env g ty e}\n\
+           let () = print_endline (%{printer ty} (Atomic.get %{g}))\n"]
   in
   let boundary = ref (not (on "modules")) in
-  ignore @@ repeat ctx 1 6 (fun _ ->
+  ignore
+  @@ repeat ctx 1 6 (fun _ ->
     if (not !boundary) && flip ~p:0.3 ctx
     then (
       boundary := true;
@@ -122,16 +144,20 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     let v = fresh ctx "v" in
     Buffer.add_string
       buf
-      [%string "let %{v} : %{show_ty ty} = %{expr ctx !env ty depth}\nlet () = print_endline (%{printer ty} %{v})\n"];
+      [%string
+        "let %{v} : %{ty#Ty} = %{expr ctx !env ty depth}\n\
+         let () = print_endline (%{printer ty} %{v})\n"];
     env := bind !env v ty);
   let conversions =
     String.concat
       ""
       (List.rev_map
          (fun (name, (a, b)) ->
-            [%string "external %{name} : %{show_ty a} -> %{show_ty b} = \"%%{num_name b}_of_%{num_name a}\"\n"])
+            [%string
+              "external %{name} : %{a#Ty} -> %{b#Ty} = \"%%{num_name b}_of_%{num_name a}\"\n"])
          !convs)
   in
-  if on "effargs" then Buffer.add_string buf "let () = print_endline (string_of_int !ticks)\n";
+  if on "effargs"
+  then Buffer.add_string buf "let () = print_endline (string_of_int !ticks)\n";
   head ^ conversions ^ Buffer.contents buf
 ;;

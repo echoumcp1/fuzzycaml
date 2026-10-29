@@ -21,8 +21,22 @@ type ty =
   | Or_null of ty
   | Arr of ty
 
-and nb = I8 | I16 | I32 | Nat | F32
-and ub = UF | UF32 | UI | UI8 | UI16 | UI32 | UI64 | UNat
+and nb =
+  | I8
+  | I16
+  | I32
+  | Nat
+  | F32
+
+and ub =
+  | UF
+  | UF32
+  | UI
+  | UI8
+  | UI16
+  | UI32
+  | UI64
+  | UNat
 
 let float_u = U UF
 
@@ -115,7 +129,7 @@ let convs = ref []
 
 let conv_ext a b =
   let clean t = String.map (fun c -> if c = '#' then 'u' else c) (num_name t) in
-  let name = Printf.sprintf "cv_%s_%s" (clean a) (clean b) in
+  let name = [%string "cv_%{clean a}_%{clean b}"] in
   if not (List.mem_assoc name !convs) then convs := (name, (a, b)) :: !convs;
   name
 ;;
@@ -125,10 +139,10 @@ let convert a b x =
   then x
   else if is_float a && not (is_float b)
   then (
-    let f = if a = Float then x else Printf.sprintf "(%s %s)" (conv_ext a Float) x in
-    let i = Printf.sprintf "(fsat %d %s)" (width b) f in
-    if b = Int64 then i else Printf.sprintf "(%s %s)" (conv_ext Int64 b) i)
-  else Printf.sprintf "(%s %s)" (conv_ext a b) x
+    let f = if a = Float then x else [%string "(%{conv_ext a Float} %{x})"] in
+    let i = [%string "(fsat %{width b#Int} %{f})"] in
+    if b = Int64 then i else [%string "(%{conv_ext Int64 b} %{i})"])
+  else [%string "(%{conv_ext a b} %{x})"]
 ;;
 
 let rec show_ty = function
@@ -138,19 +152,22 @@ let rec show_ty = function
   | Char -> "char"
   | Int64 -> "int64"
   | Str -> "string"
-  | List t -> Printf.sprintf "(%s list)" (show_ty t)
-  | Option t -> Printf.sprintf "(%s option)" (show_ty t)
-  | Pair (a, b) -> Printf.sprintf "(%s * %s)" (show_ty a) (show_ty b)
-  | Arrow (a, b) -> Printf.sprintf "(%s -> %s)" (show_ty a) (show_ty b)
-  | Named i -> Printf.sprintf "t%d" i
+  | List t -> [%string "(%{show_ty t} list)"]
+  | Option t -> [%string "(%{show_ty t} option)"]
+  | Pair (a, b) -> [%string "(%{show_ty a} * %{show_ty b})"]
+  | Arrow (a, b) -> [%string "(%{show_ty a} -> %{show_ty b})"]
+  | Named i -> [%string "t%{i#Int}"]
   | Num I32 -> "int32"
   | Num Nat -> "nativeint"
   | U UF -> "float#"
   | (Num _ | U _) as t -> num_module t ^ ".t"
-  | UTuple ts -> Printf.sprintf "#(%s)" (String.concat " * " (List.map show_ty ts))
-  | Or_null t -> Printf.sprintf "(%s or_null)" (show_ty t)
-  | Arr t -> Printf.sprintf "(%s array)" (show_ty t)
+  | UTuple ts -> [%string {|#(%{String.concat " * " (List.map show_ty ts)})|}]
+  | Or_null t -> [%string "(%{show_ty t} or_null)"]
+  | Arr t -> [%string "(%{show_ty t} array)"]
 ;;
+
+(* for %{t#Ty} in [%string] *)
+let to_string = show_ty
 
 (* float32 is not first-order, to avoid polymorphic comparison of float32 NaNs.
    *)
@@ -176,5 +193,10 @@ let rec has_float_u t =
   | Named i -> !mixed.(i)
   | List t | Option t -> has_float_u t
   | Pair (a, b) -> has_float_u a || has_float_u b
-  | t -> not (first_order t) && (match t with Arrow _ -> false | _ -> true)
+  | t ->
+    (not (first_order t))
+    &&
+      (match t with
+      | Arrow _ -> false
+      | _ -> true)
 ;;

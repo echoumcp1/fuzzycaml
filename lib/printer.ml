@@ -16,20 +16,24 @@ let rec printer = function
   | Pair (a, b) ->
     [%string {|(fun (a, b) -> "(" ^ %{printer a} a ^ ", " ^ %{printer b} b ^ ")")|}]
   | Arrow _ -> {|(fun _ -> "<fun>")|}
-  | Arr t when (match t with U _ -> false | _ -> true) ->
-    [%string {|(fun a -> "[|" ^ String.concat "; " (Array.to_list (Array.map %{printer t} a)) ^ "|]")|}]
+  | Arr t
+    when match t with
+         | U _ -> false
+         | _ -> true ->
+    [%string
+      {|(fun a -> "[|" ^ String.concat "; " (Array.to_list (Array.map %{printer t} a)) ^ "|]")|}]
   | Named i -> [%string "show_t%{i#Int}"]
   | t when is_num t ->
     if is_float t
-    then [%string {|(fun (x : %{show_ty t}) -> show_float %{convert t Float "x"})|}]
-    else [%string {|(fun (x : %{show_ty t}) -> Int64.to_string %{convert t Int64 "x"})|}]
+    then [%string {|(fun (x : %{t#Ty}) -> show_float %{convert t Float "x"})|}]
+    else [%string {|(fun (x : %{t#Ty}) -> Int64.to_string %{convert t Int64 "x"})|}]
   | _ -> {|(fun _ -> "<unprintable>")|}
 ;;
 
 let declaration ?parent i decl =
   match decl with
   | Record fields ->
-    let field (f, t, m) = [%string {|%{if m then "mutable " else ""}%{f} : %{show_ty t}|}] in
+    let field (f, t, m) = [%string {|%{if m then "mutable " else ""}%{f} : %{t#Ty}|}] in
     let show (f, t, _) = [%string {|"%{f} = " ^ %{printer t} v.%{f}|}] in
     (* OxCaml requires a layout attribute on records of only boxed and unboxed
        floats. *)
@@ -54,7 +58,7 @@ let declaration ?parent i decl =
     p
       "type t%d = #{ %s }\n"
       i
-      (String.concat "; " (List.map (fun (f, t) -> [%string "%{f} : %{show_ty t}"]) fields))
+      (String.concat "; " (List.map (fun (f, t) -> [%string "%{f} : %{t#Ty}"]) fields))
   | Variant constrs ->
     let constr (c, args) =
       match args with
@@ -79,7 +83,9 @@ let declaration ?parent i decl =
     let body =
       match parent with
       | Some (j, inherited) ->
-        [%string "[ t%{j#Int} | %{alts (List.filter (fun c -> not (List.mem c inherited)) constrs)} ]"]
+        [%string
+          "[ t%{j#Int} | %{alts (List.filter (fun c -> not (List.mem c inherited)) \
+           constrs)} ]"]
       | None when (fst (List.hd constrs)).[0] = '`' -> [%string "[ %{alts constrs} ]"]
       | None -> alts constrs
     in

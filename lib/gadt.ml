@@ -11,7 +11,8 @@ let rec gadt ctx env ty e depth =
   else
     choose
       ctx
-      ([ lit; (fun () -> [%string "(GIf (%{sub Bool}, %{sub ty}, %{sub ty}))"])
+      ([ lit
+       ; (fun () -> [%string "(GIf (%{sub Bool}, %{sub ty}, %{sub ty}))"])
        ; (fun () -> [%string "(GFst %{sub (Pair (ty, fo_env_ty ctx env))})"])
        ; (fun () -> [%string "(GSnd %{sub (Pair (fo_env_ty ctx env, ty))})"])
        ]

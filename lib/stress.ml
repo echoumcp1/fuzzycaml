@@ -5,7 +5,9 @@ open Env
 
 (* [let x : t = <e> in ] for each variable. *)
 let lets e env vars =
-  String.concat "" (List.map (fun (x, t) -> [%string "let %{x} : %{show_ty t} = %{e env t} in "]) vars)
+  String.concat
+    ""
+    (List.map (fun (x, t) -> [%string "let %{x} : %{t#Ty} = %{e env t} in "]) vars)
 ;;
 
 (* Many ints and floats live across an opaque call, so some must be spilled. *)
@@ -53,13 +55,13 @@ let many_args ctx env ty e =
   (* recursive calls mostly pass parameters through, to keep programs small *)
   let arg env t =
     let same = List.filter (fun (_, t') -> t' = t) params in
-    if env != inner || same = [] || flip ~p:0.3 ctx
-    then e env t
-    else fst (pick ctx same)
+    if env != inner || same = [] || flip ~p:0.3 ctx then e env t else fst (pick ctx same)
   in
   let args env first =
     let bound = List.map (fun (_, t) -> fresh ctx "b", t, arg env t) params in
-    ( String.concat "" (List.map (fun (y, t, v) -> [%string "let %{y} : %{show_ty t} = %{v} in "]) bound)
+    ( String.concat
+        ""
+        (List.map (fun (y, t, v) -> [%string "let %{y} : %{t#Ty} = %{v} in "]) bound)
     , String.concat " " (first :: List.map (fun (y, _, _) -> y) bound) )
   in
   let m = fresh ctx "m" in
@@ -71,7 +73,7 @@ let many_args ctx env ty e =
     (pick ctx [ ""; "[@inline never]" ])
     go
     n
-    (String.concat " " (List.map (fun (x, t) -> [%string "(%{x} : %{show_ty t})"]) params))
+    (String.concat " " (List.map (fun (x, t) -> [%string "(%{x} : %{t#Ty})"]) params))
     (show_ty ty)
     n
     (e inner ty)
@@ -89,7 +91,10 @@ let many_args ctx env ty e =
    must find them wherever the backend keeps them. *)
 let gc ctx env ty e =
   let vars = List.init (int_in ctx 2 6) (fun _ -> fresh ctx "g", fo_ty ctx) in
-  [%string {|(%{lets e env vars}%{pick ctx [ "Gc.minor ()"; "Gc.minor ()"; "Gc.full_major ()"; "Gc.compact ()" ]}; %{e (bind_all env vars) ty})|}]
+  let gc =
+    pick ctx [ "Gc.minor ()"; "Gc.minor ()"; "Gc.full_major ()"; "Gc.compact ()" ]
+  in
+  [%string "(%{lets e env vars}%{gc}; %{e (bind_all env vars) ty})"]
 ;;
 
 (* A string read at an offset inside the string's padding. *)
@@ -109,8 +114,9 @@ let str_load ctx env e ty =
         ; (fun () -> [%string "Int32.to_int (String.get_int32_le %{padded} %{off})"])
         ; (fun () -> [%string "Int32.to_int (String.get_int32_be %{padded} %{off})"])
         ; (fun () ->
-            [%string "(if String.length %{s} = 0 then 0 else Char.code (String.unsafe_get %{s} ((%{e env Int} \
-               land max_int) mod String.length %{s})))"])
+            [%string
+              "(if String.length %{s} = 0 then 0 else Char.code (String.unsafe_get %{s} \
+               ((%{e env Int} land max_int) mod String.length %{s})))"])
         ]
     | Int64 ->
       choose

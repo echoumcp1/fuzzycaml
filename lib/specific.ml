@@ -10,7 +10,9 @@ open Forms
 
 let specific ctx env ty e =
   let bin op t = fun () -> [%string "(%{e env t} %{op} %{e env t})"] in
-  let call f args = fun () -> [%string {|(%{f} %{String.concat " " (List.map (e env) args)})|}] in
+  let call f args =
+    fun () -> [%string {|(%{f} %{String.concat " " (List.map (e env) args)})|}]
+  in
   match ty with
   | Int ->
     List.map (fun op -> bin op Int) [ "+"; "-"; "*"; "land"; "lor"; "lxor" ]
@@ -43,9 +45,10 @@ let specific ctx env ty e =
       ; (fun () -> [%string "(sgn (Int64.compare %{e env Int64} %{e env Int64}))"])
       ]
     @ (if !ox_mode && on "numbers" then [ List.hd (num_ops ctx env Int e) ] else [])
-    @ (if on "arrays"
-       then [ (fun () -> [%string "(array_length %{e env (Arr (array_elem ctx 1))})"]) ]
-       else [])
+    @
+    if on "arrays"
+    then [ (fun () -> [%string "(array_length %{e env (Arr (array_elem ctx 1))})"]) ]
+    else []
   | Bool ->
     [ call "not" [ Bool ]
     ; bin "&&" Bool
@@ -67,7 +70,9 @@ let specific ctx env ty e =
       ; (fun () ->
           let s = env_ty ctx env elem in
           let x = fresh ctx "x" in
-          [%string "(List.exists (fun (%{x} : %{show_ty s}) -> %{e (bind (closure env) x s) Bool}) %{e env (List s)})"])
+          [%string
+            "(List.exists (fun (%{x} : %{s#Ty}) -> %{e (bind (closure env) x s) Bool}) \
+             %{e env (List s)})"])
       ]
   | Float ->
     List.map (fun op -> bin op Float) [ "+."; "-."; "/." ]
@@ -112,7 +117,9 @@ let specific ctx env ty e =
       ; (fun () -> [%string "(Int64.rem %{e env Int64} %{int64_lit (nonzero64 ctx)})"])
       ; (fun () ->
           let op =
-            pick ctx [ "Int64.shift_left"; "Int64.shift_right"; "Int64.shift_right_logical" ]
+            pick
+              ctx
+              [ "Int64.shift_left"; "Int64.shift_right"; "Int64.shift_right_logical" ]
           in
           [%string "(%{op} %{e env Int64} (%{e env Int} land 63))"])
       ]
@@ -130,41 +137,55 @@ let specific ctx env ty e =
     ; (fun () -> [%string "(String.concat %{e env Str} %{e env (List Str)})"])
     ; (fun () ->
         let i = fresh ctx "i" in
-        [%string "(String.init (%{e env Int} land 7) (fun (%{i} : int) -> %{e (bind (closure env) i Int) Char}))"])
+        [%string
+          "(String.init (%{e env Int} land 7) (fun (%{i} : int) -> %{e (bind (closure \
+           env) i Int) Char}))"])
     ; (fun () ->
         let c = fresh ctx "c" in
-        [%string "(String.map (fun (%{c} : char) -> %{e (bind (closure env) c Char) Char}) %{e env Str})"])
+        [%string
+          "(String.map (fun (%{c} : char) -> %{e (bind (closure env) c Char) Char}) %{e \
+           env Str})"])
     ; (fun () ->
         let b = fresh ctx "b" in
         let i = fresh ctx "i" in
         let env' = bind env i Int in
-        [%string "(let %{b} = Bytes.of_string %{e env Str} in for %{i} = 0 to (%{e env Int} land 7) do if Bytes.length \
-           %{b} > 0 then Bytes.unsafe_set %{b} ((%{e env' Int} land max_int) mod Bytes.length %{b}) %{e env' Char} \
-           done; Bytes.to_string %{b})"])
+        [%string
+          "(let %{b} = Bytes.of_string %{e env Str} in for %{i} = 0 to (%{e env Int} \
+           land 7) do if Bytes.length %{b} > 0 then Bytes.unsafe_set %{b} ((%{e env' \
+           Int} land max_int) mod Bytes.length %{b}) %{e env' Char} done; \
+           Bytes.to_string %{b})"])
     ; (fun () ->
         let b = fresh ctx "b" in
         let i = fresh ctx "i" in
         let env' = bind env i Int in
-        [%string "(let %{b} = Buffer.create (%{e env Int} land 15) in for %{i} = 0 to (%{e env Int} land 7) do \
-           Buffer.add_string %{b} %{e env' Str}; Buffer.add_char %{b} %{e env' Char} done; Buffer.contents %{b})"])
+        [%string
+          "(let %{b} = Buffer.create (%{e env Int} land 15) in for %{i} = 0 to (%{e env \
+           Int} land 7) do Buffer.add_string %{b} %{e env' Str}; Buffer.add_char %{b} \
+           %{e env' Char} done; Buffer.contents %{b})"])
     ; (fun () ->
         let s = fresh ctx "s" in
         let b = fresh ctx "b" in
-        let off = [%string "((%{e env Int} land max_int) mod (String.length %{s} + 1))"] in
+        let off =
+          [%string "((%{e env Int} land max_int) mod (String.length %{s} + 1))"]
+        in
         let store =
           choose
             ctx
             [ (fun () -> [%string "Bytes.set_uint8 %{b} %{off} %{e env Int}"])
             ; (fun () -> [%string "Bytes.set_int16_le %{b} %{off} %{e env Int}"])
             ; (fun () -> [%string "Bytes.set_uint16_be %{b} %{off} %{e env Int}"])
-            ; (fun () -> [%string "Bytes.set_int32_le %{b} %{off} (Int32.of_int %{e env Int})"])
-            ; (fun () -> [%string "Bytes.set_int32_be %{b} %{off} (Int32.of_int %{e env Int})"])
+            ; (fun () ->
+                [%string "Bytes.set_int32_le %{b} %{off} (Int32.of_int %{e env Int})"])
+            ; (fun () ->
+                [%string "Bytes.set_int32_be %{b} %{off} (Int32.of_int %{e env Int})"])
             ; (fun () -> [%string "Bytes.set_int64_le %{b} %{off} %{e env Int64}"])
             ; (fun () -> [%string "Bytes.set_int64_be %{b} %{off} %{e env Int64}"])
             ]
         in
-        [%string "(let %{s} = %{e env Str} in let %{b} = Bytes.of_string (%{s} ^ \"\\001\\002\\003\\004\\005\\006\\007\\008\") in %{store}; \
-           Bytes.to_string %{b})"])
+        [%string
+          "(let %{s} = %{e env Str} in let %{b} = Bytes.of_string (%{s} ^ \
+           \"\\001\\002\\003\\004\\005\\006\\007\\008\") in %{store}; Bytes.to_string \
+           %{b})"])
     ]
   | U UF ->
     List.map
@@ -173,49 +194,72 @@ let specific ctx env ty e =
     @ [ call "fu_sqrt" [ float_u ]; call "unbox_float" [ Float ] ]
     @ if on "numbers" then num_ops ctx env ty e else []
   | Num _ | U _ -> num_ops ctx env ty e
-  | UTuple ts -> [ (fun () -> [%string {|#(%{String.concat ", " (List.map (e env) ts)})|}]) ]
+  | UTuple ts ->
+    [ (fun () -> [%string {|#(%{String.concat ", " (List.map (e env) ts)})|}]) ]
   | Or_null t -> [ (fun () -> "Null"); (fun () -> [%string "(This %{e env t})"]) ]
   | Arr t ->
     let n () = [%string "(1 + (%{e env Int} land 7))"] in
-    [ (fun () -> p "[| %s |]" (String.concat "; " (List.init (int_in ctx 1 3) (fun _ -> e env t))))
+    [ (fun () ->
+        let elems = String.concat "; " (List.init (int_in ctx 1 3) (fun _ -> e env t)) in
+        [%string "[| %{elems} |]"])
     ; (fun () -> [%string "(array_make %{n ()} %{e env t})"])
     ; (fun () ->
         (* each index comes from the loop, so it is in bounds *)
         let a = fresh ctx "a" in
         let i = fresh ctx "i" in
         let env' = bind (bind env i Int) [%string "(array_get %{a} %{i})"] t in
-        [%string "(let %{a} = array_make %{n ()} %{e env t} in for %{i} = 0 to array_length %{a} - \
-                  1 do array_set %{a} %{i} %{e env' t} done; %{a})"])
+        [%string
+          "(let %{a} = array_make %{n ()} %{e env t} in for %{i} = 0 to array_length \
+           %{a} - 1 do array_set %{a} %{i} %{e env' t} done; %{a})"])
     ]
     @ (match t with
        | Arr s ->
          [ (fun () ->
              let i = fresh ctx "i" in
-             [%string "(Array.init %{n ()} (fun (%{i} : int) -> %{e (bind (closure env) i Int) t}))"])
+             [%string
+               "(Array.init %{n ()} (fun (%{i} : int) -> %{e (bind (closure env) i Int) \
+                t}))"])
          ; (fun () ->
              (* each element of a 2D array, set in nested loops *)
              let a = fresh ctx "a" in
              let r = fresh ctx "r" in
              let i = fresh ctx "i" in
              let j = fresh ctx "j" in
-             let env' = bind (bind (bind env i Int) j Int) [%string "(array_get %{r} %{j})"] s in
-             [%string "(let %{a} = Array.init %{n ()} (fun _ -> array_make %{n ()} %{e (closure env) s}) in for %{i} = 0 to array_length %{a} - 1 do \
-                let %{r} = array_get %{a} %{i} in for %{j} = 0 to array_length %{r} - 1 do array_set %{r} %{j} %{e env' s} done done; %{a})"])
+             let env' =
+               bind (bind (bind env i Int) j Int) [%string "(array_get %{r} %{j})"] s
+             in
+             [%string
+               "(let %{a} = Array.init %{n ()} (fun _ -> array_make %{n ()} %{e (closure \
+                env) s}) in for %{i} = 0 to array_length %{a} - 1 do let %{r} = \
+                array_get %{a} %{i} in for %{j} = 0 to array_length %{r} - 1 do \
+                array_set %{r} %{j} %{e env' s} done done; %{a})"])
          ]
        | _ -> [])
     (* The compiler picks how to store an array from its element type, so these
        hide that type behind a GADT, a polymorphic function or a call. *)
-    @ (match t with
-       | U _ -> []
-       | _ ->
-         let w () = pick ctx ("AwAny" :: (match t with Float -> [ "AwFloat" ] | Int -> [ "AwInt" ] | _ -> [])) in
-         [ (fun () -> [%string "(arr_of %{w ()} %{n ()} %{e env t})"])
-         ; (fun () -> [%string "(arr_poly %{n ()} %{e env t})"])
-         ; (fun () -> [%string "(arr_copy %{e env ty})"])
-         ; (fun () ->
-             let mk = fresh ctx "mk" in
-             [%string "(let %{mk} (type a) (x : a) (y : a) : a array = [| x; y; x |] in %{mk} %{e env t} %{e env t})"])
-         ])
+    @
+      (match t with
+      | U _ -> []
+      | _ ->
+        let w () =
+          pick
+            ctx
+            ("AwAny"
+             ::
+             (match t with
+              | Float -> [ "AwFloat" ]
+              | Int -> [ "AwInt" ]
+              | _ -> []))
+        in
+        [ (fun () -> [%string "(arr_of %{w ()} %{n ()} %{e env t})"])
+        ; (fun () -> [%string "(arr_poly %{n ()} %{e env t})"])
+        ; (fun () -> [%string "(arr_copy %{e env ty})"])
+        ; (fun () ->
+            let mk = fresh ctx "mk" in
+            [%string
+              "(let %{mk} (type a) (x : a) (y : a) : a array = [| x; y; x |] in %{mk} \
+               %{e env t} %{e env t})"])
+        ])
   | List t ->
     [ (fun () -> [%string "(%{e env t} :: %{e env ty})"])
     ; (fun () -> [%string "[%{e env t}; %{e env t}]"])
@@ -224,21 +268,31 @@ let specific ctx env ty e =
     ; (fun () ->
         let s = env_ty ctx env elem in
         let x = fresh ctx "x" in
-        [%string "(List.map (fun (%{x} : %{show_ty s}) -> %{e (bind (closure env) x s) t}) %{e env (List s)})"])
+        [%string
+          "(List.map (fun (%{x} : %{s#Ty}) -> %{e (bind (closure env) x s) t}) %{e env \
+           (List s)})"])
     ; (fun () ->
         let x = fresh ctx "x" in
-        [%string "(List.filter (fun (%{x} : %{show_ty t}) -> %{e (bind (closure env) x t) Bool}) %{e env ty})"])
+        [%string
+          "(List.filter (fun (%{x} : %{t#Ty}) -> %{e (bind (closure env) x t) Bool}) %{e \
+           env ty})"])
     ; (fun () ->
         let i = fresh ctx "i" in
-        [%string "(List.init (%{e env Int} land 7) (fun (%{i} : int) -> %{e (bind (closure env) i Int) t}))"])
+        [%string
+          "(List.init (%{e env Int} land 7) (fun (%{i} : int) -> %{e (bind (closure env) \
+           i Int) t}))"])
     ]
-    @ (if first_order t then [ (fun () -> [%string "(List.sort compare %{e env ty})"]) ] else [])
+    @ (if first_order t
+       then [ (fun () -> [%string "(List.sort compare %{e env ty})"]) ]
+       else [])
     @ boost (if on "tmc" then [ (fun () -> tmc ctx env t e) ] else [])
   | Option t ->
     [ (fun () -> [%string "(Some %{e env t})"])
     ; (fun () ->
         let x = fresh ctx "x" in
-        [%string "(List.find_opt (fun (%{x} : %{show_ty t}) -> %{e (bind (closure env) x t) Bool}) %{e env (List t)})"])
+        [%string
+          "(List.find_opt (fun (%{x} : %{t#Ty}) -> %{e (bind (closure env) x t) Bool}) \
+           %{e env (List t)})"])
     ; (fun () ->
         let s =
           env_ty ctx env (function
@@ -246,18 +300,24 @@ let specific ctx env ty e =
             | _ -> None)
         in
         let x = fresh ctx "x" in
-        [%string "(Option.map (fun (%{x} : %{show_ty s}) -> %{e (bind (closure env) x s) t}) %{e env (Option s)})"])
+        [%string
+          "(Option.map (fun (%{x} : %{s#Ty}) -> %{e (bind (closure env) x s) t}) %{e env \
+           (Option s)})"])
     ]
   | Pair (a, b) -> [ (fun () -> [%string "(%{e env a}, %{e env b})"]) ]
   | Arrow (a, b) ->
     [ (fun () ->
         let x = fresh ctx "x" in
-        [%string "(fun (%{x} : %{show_ty a}) -> %{e (bind (escape env) x a) b})"])
+        [%string "(fun (%{x} : %{a#Ty}) -> %{e (bind (escape env) x a) b})"])
     ]
   | Named i ->
     (match ctx.decls.(i) with
      | URecord fields ->
-       let build () = String.concat "; " (List.map (fun (f, t) -> [%string "%{f} = %{e env t}"]) fields) in
+       let build () =
+         String.concat
+           "; "
+           (List.map (fun (f, t) -> [%string "%{f} = %{e env t}"]) fields)
+       in
        [ (fun () -> [%string "#{ %{build ()} }"])
        ; (fun () ->
            let f, t = pick ctx fields in
@@ -271,7 +331,12 @@ let specific ctx env ty e =
                 Some
                   (fun () ->
                     let s = fresh ctx "s" in
-                    [%string {|(let %{s} = %{e env (Named b)} in #{ %{String.concat "; " (List.map (fun (f, _) -> p "%s = %s.%s" f s (String.sub f 1 (String.length f - 1))) fields)} })|}]))
+                    (* unboxed field uf is copied from boxed field f *)
+                    let copy (f, _) =
+                      [%string "%{f} = %{s}.%{String.sub f 1 (String.length f - 1)}"]
+                    in
+                    let fields = String.concat "; " (List.map copy fields) in
+                    [%string "(let %{s} = %{e env (Named b)} in #{ %{fields} })"]))
            !twins
      | Variant constrs ->
        List.map (fun (c, args) () -> construct c (List.map (e env) args)) constrs
@@ -279,13 +344,17 @@ let specific ctx env ty e =
            (fun (child, parent) ->
               if child = i
               then (
-                let up () = [%string "(%{e env (Named parent)} : t%{parent#Int} :> t%{child#Int})"] in
+                let up () =
+                  [%string "(%{e env (Named parent)} : t%{parent#Int} :> t%{child#Int})"]
+                in
                 [ up; up; up ])
               else [])
            !poly_parent
      | Record fields ->
        let build () =
-         String.concat "; " (List.map (fun (f, t, _) -> [%string "%{f} = %{e env t}"]) fields)
+         String.concat
+           "; "
+           (List.map (fun (f, t, _) -> [%string "%{f} = %{e env t}"]) fields)
        in
        [ (fun () -> [%string "{ %{build ()} }"])
        ; (fun () ->
@@ -304,7 +373,11 @@ let specific ctx env ty e =
                       "(let %s = %s in { %s })"
                       s
                       (e env (Named u))
-                      (String.concat "; " (List.map (fun (f, _, _) -> [%string "%{f} = %{s}.#u%{f}"]) fields))))
+                      (String.concat
+                         "; "
+                         (List.map
+                            (fun (f, _, _) -> [%string "%{f} = %{s}.#u%{f}"])
+                            fields))))
            !twins
        @
        (* Only a record the expression allocates is mutated, and only before it
@@ -315,16 +388,15 @@ let specific ctx env ty e =
            [ (fun () ->
                let r = fresh ctx "r" in
                let i = fresh ctx "i" in
-               let f, t, _ =
-                 pick ctx mutables
-               in
+               let f, t, _ = pick ctx mutables in
                let env' =
                  List.fold_left
                    (fun env (g, gt, _) -> bind env [%string "%{r}.%{g}"] gt)
                    (bind env i Int)
                    fields
                in
-               [%string "(let %{r} = { %{build ()} } in for %{i} = 0 to (%{e env Int} land 7) do \
-                         %{r}.%{f} <- %{e env' t} done; %{r})"])
+               [%string
+                 "(let %{r} = { %{build ()} } in for %{i} = 0 to (%{e env Int} land 7) \
+                  do %{r}.%{f} <- %{e env' t} done; %{r})"])
            ]))
 ;;

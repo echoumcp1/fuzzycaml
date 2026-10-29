@@ -12,7 +12,9 @@ let rec gen_ty ?(unboxed = false) ctx ~first_order depth =
       (List.init (Array.length ctx.decls) Fun.id)
   in
   let ox f = !ox_mode && on f in
-  let nums = List.map (fun n -> Num n) (if first_order then [ I8; I16; I32; Nat ] else all_nb) in
+  let nums =
+    List.map (fun n -> Num n) (if first_order then [ I8; I16; I32; Nat ] else all_nb)
+  in
   choose
     ctx
     ([ (fun () -> Int)
@@ -24,9 +26,7 @@ let rec gen_ty ?(unboxed = false) ctx ~first_order depth =
      ; (fun () -> Int64)
      ]
      @ (if on "strings" then [ (fun () -> Str) ] else [])
-     @ (if named <> []
-        then [ (fun () -> Named (pick ctx named)) ]
-        else [])
+     @ (if named <> [] then [ (fun () -> Named (pick ctx named)) ] else [])
      @ (if unboxed && !ox_mode then [ (fun () -> float_u) ] else [])
      @ (if ox "numbers" then List.map (fun t () -> t) nums else [])
      @ (if unboxed && ox "numbers" then List.map (fun u () -> U u) all_ub else [])
@@ -38,7 +38,9 @@ let rec gen_ty ?(unboxed = false) ctx ~first_order depth =
                    gen_ty ~unboxed:true ctx ~first_order (depth - 1))))
           ]
         else [])
-     @ (if unboxed && depth > 0 && ox "or_null" then [ (fun () -> Or_null (sub ())) ] else [])
+     @ (if unboxed && depth > 0 && ox "or_null"
+        then [ (fun () -> Or_null (sub ())) ]
+        else [])
      @ (if (not first_order) && depth > 0 && on "arrays"
         then [ (fun () -> Arr (array_elem ctx (depth - 1))) ]
         else [])
