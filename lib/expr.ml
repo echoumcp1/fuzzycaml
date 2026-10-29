@@ -38,9 +38,10 @@ let rec expr ctx env ty depth =
        if env.in_try && flip ~p:0.15 ctx
        then raise_at ctx ty
        else if
+         (* negated so that false, which the shrinker tries first, means a leaf *)
          depth <= 0
-         || (unused <> [] && flip ~p:0.5 ctx)
-         || (vars <> [] && flip ~p:0.25 ctx)
+         || (unused <> [] && not (flip ~p:0.5 ctx))
+         || (vars <> [] && not (flip ~p:0.75 ctx))
        then leaf ()
        else if performs <> [] && flip ~p:0.2 ctx
        then (
