@@ -28,7 +28,9 @@ end
    - OxCaml -flambda2-match-in-match at -O3: a match alias left free in the
      unit.
    - Flambda: a float array built in a GADT branch that is dead for the
-     element type. *)
+     element type.
+   - OxCaml: an apply_cont with fewer arguments than its continuation, from
+     a local function applied to the contents of a ref. *)
 let known_compile_crash msg =
   List.exists
     (contains msg)
@@ -39,6 +41,9 @@ let known_compile_crash msg =
     ; "CFG comparison MISMATCH"
     ; "not expected to be free in whole-compilation-unit term"
     ; "Bad definition for float array member"
+    ; "fold_left_map2"
+    ; "do not match arguments of"
+    ; "arguments but got apply_cont"
     ]
   || (contains msg "expected compatible register or floating-point constant"
       && contains msg "fmov")
@@ -58,14 +63,21 @@ let known_bug backends results source =
   let odd_agree f source = List.for_all agrees (run_all (List.map f odd) source) in
   odd <> []
   && (List.for_all
-        (fun r ->
+        (fun (b, r) ->
            agrees r
            ||
            match r with
+           (* The reaper can drop the code of a partially applied function
+              that is still referenced. *)
+           | Compile_error msg
+             when List.mem "-flambda2-reaper" b.argv || List.mem "-O4" b.argv ->
+             known_compile_crash msg
+             || contains msg "Undefined symbols"
+             || contains msg "undefined reference"
            | Compile_error msg -> known_compile_crash msg
            (* -flambda2-reaper with phantom lets aborts at run time. *)
            | Ran (_, _, err) -> contains err "Dead variable in bound pattern")
-        results
+        (List.combine backends results)
       ||
       (* After a nested perform, native code leaves a shallow fiber's effect
          handler pointing into the minor heap, and the GC later crashes. Matches

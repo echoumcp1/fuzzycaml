@@ -120,6 +120,8 @@ During shrinking, only the reference and the first disagreeing backend are run. 
 - OxCaml `-flambda2-reaper`: `Dead variable in bound pattern` at run time.
 - OxCaml reaper and invariant checks: `-dcmm-invariants` and `-dcfg-invariants` reject correct programs. The toggles backend drops both checks when the reaper is on.
 - OxCaml reaper with `-g -flambda2-expert-phantom-lets`: undefined symbols at link time. The toggles backend never combines them.
+- OxCaml reaper (`-flambda2-reaper` or `-O4`): undefined symbols at link time for a partially applied function.
+- OxCaml: `Invalid_argument("fold_left_map2")`, or at `-Oclassic` `do not match arguments of` / `Expected N arguments but got apply_cont`, for a local function applied to the contents of a `ref`.
 - OxCaml `-dcmm-invariants` with unboxed products: programs containing `#(` or `#{` are compiled without the check.
 - OxCaml arm64: `float32#` constants (1 + m/16) × 2^k with k from 61 to 68 are emitted as invalid `fmov` immediates.
 - OxCaml `-flambda2-match-in-match`: `Variable ... not expected to be free in whole-compilation-unit term`.
