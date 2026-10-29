@@ -116,7 +116,6 @@ During shrinking, only the reference and the first disagreeing backend are run. 
 `known_bug` recognises these by behaviour, using the backends that disagree with the reference:
 - Non-flambda `ocamlopt`: `Selection.size_expr` crash.
 - Releases before trunk: `Matching: impossible empty matrix in a Total match` (or `Matching.comp_exit` in 5.2 and OxCaml) on a redundant or-pattern with a guard after a catch-all.
-- OxCaml compile crashes: `Array.iter2: arrays must have the same length`, `Duplicate order for bindings when flushing`, `Illegal move between registers of differing types`.
 - OxCaml `-use-ssa`: `CFG comparison MISMATCH`. This hides all `-use-ssa` validator failures.
 - OxCaml `-flambda2-reaper`: `Dead variable in bound pattern` at run time.
 - OxCaml reaper and invariant checks: `-dcmm-invariants` and `-dcfg-invariants` reject correct programs. The toggles backend drops both checks when the reaper is on.

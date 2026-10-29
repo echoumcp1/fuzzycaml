@@ -22,9 +22,6 @@ end
      catch-all (Matching.comp_exit in 5.2 and OxCaml).
    - OxCaml -Oclassic: a dead trap handler around a call that cannot raise,
      where linscan reads a ref from an unset register.
-   - OxCaml -Oclassic: a raise inside a try (Array.iter2 in Cfg_selectgen),
-     and a float# read in an unreachable match arm.
-   - OxCaml -flambda2-expert-inline-effects-in-cmm.
    - OxCaml -use-ssa: the validator rejects the SSA pipeline's CFG.
    - OxCaml arm64: fmov with a float32# constant it cannot encode,
      (1 + m/16) * 2^k for k in 61..68.
@@ -37,9 +34,6 @@ let known_compile_crash msg =
     ; "Matching: impossible empty matrix in a Total match"
     ; "Matching.comp_exit"
     ; "While verifying locations destroyed at raise"
-    ; "Array.iter2: arrays must have the same length"
-    ; "Duplicate order for bindings when flushing"
-    ; "Illegal move between registers of differing types"
     ; "CFG comparison MISMATCH"
     ; "not expected to be free in whole-compilation-unit term"
     ]

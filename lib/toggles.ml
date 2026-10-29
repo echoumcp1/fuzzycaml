@@ -19,7 +19,7 @@ let ox_toggles =
   ; "-flambda2-inline-threshold 1000 -flambda2-inline-max-depth 6"
   ; "-flambda2-cse-depth 0"; "-flambda2-join-depth 0"; "-regalloc irc"; "-regalloc ls"
   ; "-regalloc gi"; "-regalloc-linscan-threshold 0"; "-runtime-variant d"
-  ; "-flambda2-reaper"; "-flambda2-expert-inline-effects-in-cmm"; "-use-ssa"
+  ; "-flambda2-reaper"; "-use-ssa"
   ; "-flambda2-result-types-all-functions"; "-flambda2-expert-can-inline-recursive-functions"
   ; "-flambda2-match-in-match"; "-flambda2-join-algorithm n-way"; "-experimental-optimizations"
   ]
