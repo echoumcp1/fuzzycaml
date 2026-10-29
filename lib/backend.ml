@@ -59,10 +59,10 @@ let discover ~ox =
         @ libs ".cmxa"
         @ flags
       in
-      let opt suffix flags = { name = p "%s/ocamlopt%s" switch suffix; argv = nat flags } in
+      let opt suffix flags = { name = [%string "%{switch}/ocamlopt%{suffix}"]; argv = nat flags } in
       (* the reference: bytecode with the debug runtime *)
       let byte =
-        { name = p "%s/ocamlc" switch; argv = (ocamlc :: libs ".cma") @ [ "-runtime-variant"; "d" ] }
+        { name = [%string "%{switch}/ocamlc"]; argv = (ocamlc :: libs ".cma") @ [ "-runtime-variant"; "d" ] }
       in
       if ox
       then

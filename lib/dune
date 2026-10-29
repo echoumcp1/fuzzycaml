@@ -1,3 +1,4 @@
 (library
  (name fuzzycaml_lib)
- (libraries hegel))
+ (libraries hegel)
+ (preprocess (pps ppx_string)))

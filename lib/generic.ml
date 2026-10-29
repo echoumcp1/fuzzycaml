@@ -35,15 +35,15 @@ let generic ctx env ty e =
     choose
       ctx
       [ (fun () -> go)
-      ; (fun () -> p "(%s [@inlined never])" go)
-      ; (fun () -> p "(%s [@inlined])" go)
+      ; (fun () -> [%string "(%{go} [@inlined never])"])
+      ; (fun () -> [%string "(%{go} [@inlined])"])
       ]
   in
-  [ (fun () -> p "(if %s then %s else %s)" (e env Bool) (e env ty) (e env ty))
+  [ (fun () -> [%string "(if %{e env Bool} then %{e env ty} else %{e env ty})"])
   ; (fun () ->
       let s = from_env ctx env some_ty (fun () -> top_ty ctx) in
       let x = fresh ctx "x" in
-      p "(let %s : %s = %s in %s)" x (show_ty s) (e env s) (e (bind env x s) ty))
+      [%string "(let %{x} : %{show_ty s} = %{e env s} in %{e (bind env x s) ty})"])
   ; (fun () ->
       let s =
         from_env
@@ -54,28 +54,17 @@ let generic ctx env ty e =
             | _ -> None)
           (fun () -> top_ty ctx)
       in
-      p "(%s %s)" (e env (Arrow (s, ty))) (e env s))
+      [%string "(%{e env (Arrow (s, ty))} %{e env s})"])
   ; (fun () ->
       let s = top_ty ctx in
       let x = fresh ctx "x" in
-      p
-        "((fun (%s : %s) -> %s) %s)"
-        x
-        (show_ty s)
-        (e (bind (closure env) x s) ty)
-        (e env s))
+      [%string "((fun (%{x} : %{show_ty s}) -> %{e (bind (closure env) x s) ty}) %{e env s})"])
   ; (fun () ->
       let s = env_ty ctx env elem in
       let h = fresh ctx "h" in
       let t = fresh ctx "t" in
       let l, local = scrutinee env (List s) in
-      p
-        "(match %s with [] -> %s | %s :: %s -> %s)"
-        l
-        (e env ty)
-        h
-        t
-        (e (bind_part local (bind_part local env h s) t (List s)) ty))
+      [%string "(match %{l} with [] -> %{e env ty} | %{h} :: %{t} -> %{e (bind_part local (bind_part local env h s) t (List s)) ty})"])
   ; (fun () ->
       let s =
         env_ty ctx env (function
@@ -84,12 +73,7 @@ let generic ctx env ty e =
       in
       let x = fresh ctx "x" in
       let o, local = scrutinee env (Option s) in
-      p
-        "(match %s with None -> %s | Some %s -> %s)"
-        o
-        (e env ty)
-        x
-        (e (bind_part local env x s) ty))
+      [%string "(match %{o} with None -> %{e env ty} | Some %{x} -> %{e (bind_part local env x s) ty})"])
   ; (fun () ->
       let a, b =
         from_env
@@ -103,59 +87,25 @@ let generic ctx env ty e =
       let x = fresh ctx "x" in
       let y = fresh ctx "y" in
       let v, local = scrutinee env (Pair (a, b)) in
-      p
-        "(let (%s, %s) = %s in %s)"
-        x
-        y
-        v
-        (e (bind_part local (bind_part local env x a) y b) ty))
+      [%string "(let (%{x}, %{y}) = %{v} in %{e (bind_part local (bind_part local env x a) y b) ty})"])
   ; (fun () ->
       let go = fresh ctx "go" in
       let n = fresh ctx "n" in
       let acc = fresh ctx "acc" in
       let env = closure env in
-      p
-        "(let%s rec %s (%s : int) (%s : %s) : %s = if %s <= 0 then %s else %s (%s - 1) \
-         %s in %s (%s land 15) %s)"
-        (rec_attr ())
-        go
-        n
-        acc
-        (show_ty ty)
-        (show_ty ty)
-        n
-        acc
-        go
-        n
-        (e (bind (bind env n Int) acc ty) ty)
-        (call_attr go)
-        (e env Int)
-        (e env ty))
+      [%string "(let%{rec_attr ()} rec %{go} (%{n} : int) (%{acc} : %{show_ty ty}) : %{show_ty ty} = if %{n} <= 0 then %{acc} else %{go} (%{n} - 1) \
+         %{e (bind (bind env n Int) acc ty) ty} in %{call_attr go} (%{e env Int} land 15) %{e env ty})"])
   ; (fun () ->
       let go = fresh ctx "go" in
       let n = fresh ctx "n" in
       let r = fresh ctx "r" in
       let env = closure env in
-      p
-        "(let%s rec %s (%s : int) : %s = if %s <= 0 then %s else (let %s : %s = %s (%s - \
-         1) in %s) in %s (%s land 15))"
-        (rec_attr ())
-        go
-        n
-        (show_ty ty)
-        n
-        (e (bind env n Int) ty)
-        r
-        (show_ty ty)
-        go
-        n
-        (e (bind (bind env n Int) r ty) ty)
-        (call_attr go)
-        (e env Int))
+      [%string "(let%{rec_attr ()} rec %{go} (%{n} : int) : %{show_ty ty} = if %{n} <= 0 then %{e (bind env n Int) ty} else (let %{r} : %{show_ty ty} = %{go} (%{n} - \
+         1) in %{e (bind (bind env n Int) r ty) ty}) in %{call_attr go} (%{e env Int} land 15))"])
   ; (fun () ->
       if on "exits"
       then p "(try %s with Exit -> %s)" (e { env with in_try = true } ty) (e env ty)
-      else p "(if %s then %s else %s)" (e env Bool) (e env ty) (e env ty))
+      else [%string "(if %{e env Bool} then %{e env ty} else %{e env ty})"])
   ; (fun () ->
       let s =
         from_env
@@ -178,7 +128,7 @@ let generic ctx env ty e =
       let v =
         match s with
         | Pair (a, b) when (not local) && flip ~p:0.4 ctx ->
-          p "%s, %s" (e env a) (e env b)
+          [%string "%{e env a}, %{e env b}"]
         | Named k
           when (not local) && List.mem_assoc k variants && flip ~p:0.3 ctx ->
           (* match-in-match: the inner match's input is opaque, so its result
@@ -190,7 +140,7 @@ let generic ctx env ty e =
             let c', args' = List.nth outs ((idx + off) mod List.length outs) in
             p "| %s -> %s" (construct c (List.map (fun _ -> "_") args)) (construct c' (List.map (e env) args'))
           in
-          p "(match Sys.opaque_identity %s with %s)" (e env (Named j)) (String.concat " " (List.mapi arm ins))
+          [%string {|(match Sys.opaque_identity %{e env (Named j)} with %{String.concat " " (List.mapi arm ins)})|}]
         | _ -> v
       in
       let arm () =
@@ -198,60 +148,53 @@ let generic ctx env ty e =
         let env' = List.fold_left (fun env (x, t) -> bind_part local env x t) env bound in
         let guard =
           if flip ~p:0.3 ctx
-          then p " when %s" (e env' Bool)
+          then [%string " when %{e env' Bool}"]
           else ""
         in
-        p "| %s%s -> %s" q guard (e env' ty)
+        [%string "| %{q}%{guard} -> %{e env' ty}"]
       in
       let arms = List.init (int_in ctx 1 4) (fun _ -> arm ()) in
       let arms =
         String.concat
           " "
           (if (not local) && (not (restricted s)) && on "exits" && flip ~p:0.2 ctx
-           then arms @ [ p "| exception Exit -> %s" (e env ty) ]
+           then arms @ [ [%string "| exception Exit -> %{e env ty}"] ]
            else arms)
       in
       if flip ~p:0.6 ctx
       then (
         let x = fresh ctx "m" in
-        p "(match %s with %s | %s -> %s)" v arms x (e (bind_part local env x s) ty))
+        [%string "(match %{v} with %{arms} | %{x} -> %{e (bind_part local env x s) ty})"])
       else
         (* Without a catch-all the match may fail, so a Match_failure handler
            goes around it. *)
-        p "(try (match %s with %s) with Match_failure _ -> %s)" v arms (e env ty))
+        [%string "(try (match %{v} with %{arms}) with Match_failure _ -> %{e env ty})"])
   ]
   @ (if not value
      then []
      else
        [ (fun () ->
-           if on "opaque" then p "(Sys.opaque_identity %s)" (e env ty) else e env ty)
+           if on "opaque" then [%string "(Sys.opaque_identity %{e env ty})"] else e env ty)
        ; (fun () ->
            let s =
              env_ty ctx env (function
                | Pair (a, b) when a = ty -> Some b
                | _ -> None)
            in
-           p "(fst %s)" (e env (Pair (ty, s))))
+           [%string "(fst %{e env (Pair (ty, s))})"])
        ; (fun () ->
            let s =
              env_ty ctx env (function
                | Pair (a, b) when b = ty -> Some a
                | _ -> None)
            in
-           p "(snd %s)" (e env (Pair (s, ty))))
+           [%string "(snd %{e env (Pair (s, ty))})"])
        ; (fun () ->
            let s = env_ty ctx env elem in
            let acc = fresh ctx "acc" in
            let x = fresh ctx "x" in
-           p
-             "(List.fold_left (fun (%s : %s) (%s : %s) -> %s) %s %s)"
-             acc
-             (show_ty ty)
-             x
-             (show_ty s)
-             (e (bind (bind (closure env) acc ty) x s) ty)
-             (e env ty)
-             (e env (List s)))
+           [%string "(List.fold_left (fun (%{acc} : %{show_ty ty}) (%{x} : %{show_ty s}) -> \
+                     %{e (bind (bind (closure env) acc ty) x s) ty}) %{e env ty} %{e env (List s)})"])
        ])
   @ List.concat_map
       (fun (i, decl) ->
@@ -269,12 +212,12 @@ let generic ctx env ty e =
                         then fst (scrutinee env (Named i))
                         else e env (Named i)
                       in
-                      p "(%s).%s" r f)
+                      [%string "(%{r}).%{f}"])
                 else None)
              fields
          | URecord fields ->
            List.filter_map
-             (fun (f, t) -> if t = ty then Some (fun () -> p "(%s).#%s" (e env (Named i)) f) else None)
+             (fun (f, t) -> if t = ty then Some (fun () -> [%string "(%{e env (Named i)}).#%{f}"]) else None)
              fields
          | Variant _ -> [])
       (indexed_decls ctx)
@@ -284,13 +227,14 @@ let generic ctx env ty e =
      then
        [ (fun () ->
            let a = fresh ctx "a" in
-           p "(let %s = %s in array_get %s ((%s land max_int) mod array_length %s))" a (e env (Arr ty)) a (e env Int) a)
+           [%string "(let %{a} = %{e env (Arr ty)} in array_get %{a} ((%{e env Int} land max_int) \
+                     mod array_length %{a}))"])
        ]
        @
        match ty with
        | Float | Int ->
          [ (fun () ->
-             p "(arr_get %s %s %s)" (if ty = Float then "AwFloat" else "AwInt") (e env (Arr ty)) (e env Int))
+             [%string {|(arr_get %{if ty = Float then "AwFloat" else "AwInt"} %{e env (Arr ty)} %{e env Int})|}])
          ]
        | _ -> []
      else [])
@@ -313,18 +257,18 @@ let generic ctx env ty e =
   @ (if on "strings" then [ (fun () -> str_match ctx env ty e) ] else [])
   @ boost (if fo && on "gadt"
      then
-       [ (fun () -> p "(geval %s)" (gadt ctx env ty e 3))
+       [ (fun () -> [%string "(geval %{gadt ctx env ty e 3})"])
        ; (fun () ->
            match ty with
            | Int | Bool ->
-             p "(gbump %s %s)" (gadt ctx env ty e 2) (e env ty)
-           | _ -> p "(geval %s)" (gadt ctx env ty e 2))
+             [%string "(gbump %{gadt ctx env ty e 2} %{e env ty})"]
+           | _ -> [%string "(geval %{gadt ctx env ty e 2})"])
        ]
      else [])
   @ boost (List.filter_map
       (fun (child, parent) ->
          if Named child = ty
-         then Some (fun () -> p "(%s : t%d :> t%d)" (e env (Named parent)) parent child)
+         then Some (fun () -> [%string "(%{e env (Named parent)} : t%{parent#Int} :> t%{child#Int})"])
          else None)
       !poly_parent)
   @ boost (if immediate ty && on "atomics" then [ (fun () -> local_atomic ctx env ty e) ] else [])
@@ -335,7 +279,7 @@ let generic ctx env ty e =
   (* Both branches are equal, so the optimiser can join them. *)
   @ boost
       (if on "samebranch"
-       then [ (fun () -> let c = e env Bool in let a = e env ty in p "(if %s then %s else %s)" c a a) ]
+       then [ (fun () -> let c = e env Bool in let a = e env ty in [%string "(if %{c} then %{a} else %{a})"]) ]
        else [])
   @
   if (not fo) || not (on "loops")
@@ -344,21 +288,12 @@ let generic ctx env ty e =
     [ (fun () ->
         let r = fresh ctx "r" in
         let i = fresh ctx "i" in
-        p
-          "(let %s = ref (%s : %s) in for %s = 0 to (%s land 7) do %s := %s done; !%s)"
-          r
-          (e env ty)
-          (show_ty ty)
-          i
-          (e env Int)
-          r
-          (e (bind (bind env (p "!%s" r) ty) i Int) ty)
-          r)
+        [%string {|(let %{r} = ref (%{e env ty} : %{show_ty ty}) in for %{i} = 0 to (%{e env Int} land 7) do %{r} := %{e (bind (bind env (p "!%s" r) ty) i Int) ty} done; !%{r})|}])
     ; (fun () ->
         let r = fresh ctx "r" in
         let k = fresh ctx "k" in
         let lim = fresh ctx "lim" in
-        let env' = bind env (p "!%s" r) ty in
+        let env' = bind env [%string "!%{r}"] ty in
         p
           "(let %s = ref (%s : %s) in let %s = ref 0 in let %s = %s land 7 in while !%s < %s && \
            %s do %s := %s; incr %s done; !%s)"
@@ -372,29 +307,15 @@ let generic ctx env ty e =
           lim
           (e env' Bool)
           r
-          (e (bind env' (p "!%s" k) Int) ty)
+          (e (bind env' [%string "!%{k}"] Int) ty)
           k
           r)
     ; (fun () ->
         let a = fresh ctx "a" in
         let i = fresh ctx "i" in
-        let get = p "%s.(%s mod Array.length %s)" a i a in
-        p
-          "(let %s = Array.make (1 + (%s land 7)) %s in for %s = 0 to (%s land 7) do \
-           %s.((%s land max_int) mod Array.length %s) <- %s done; Array.fold_left (fun \
-           (_ : %s) (x : %s) -> x) %s.(0) %s)"
-          a
-          (e env Int)
-          (e env ty)
-          i
-          (e env Int)
-          a
-          (e (bind env i Int) Int)
-          a
-          (e (bind (bind env get ty) i Int) ty)
-          (show_ty ty)
-          (show_ty ty)
-          a
-          a)
+        let get = [%string "%{a}.(%{i} mod Array.length %{a})"] in
+        [%string "(let %{a} = Array.make (1 + (%{e env Int} land 7)) %{e env ty} in for %{i} = 0 to (%{e env Int} land 7) do \
+           %{a}.((%{e (bind env i Int) Int} land max_int) mod Array.length %{a}) <- %{e (bind (bind env get ty) i Int) ty} done; Array.fold_left (fun \
+           (_ : %{show_ty ty}) (x : %{show_ty ty}) -> x) %{a}.(0) %{a})"])
     ]
 ;;

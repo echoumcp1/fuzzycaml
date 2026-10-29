@@ -27,7 +27,7 @@ let p = Printf.sprintf
 let unused ctx vars = List.filter (fun (x, _) -> not (Hashtbl.mem ctx.used x)) vars
 
 (* Parenthesises a negative literal. *)
-let paren s = if String.length s > 0 && s.[0] = '-' then p "(%s)" s else s
+let paren s = if String.length s > 0 && s.[0] = '-' then [%string "(%{s})"] else s
 
 (* Spans with the same name are what the shrinker swaps for one another, so
    expressions are named by their type. *)

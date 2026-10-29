@@ -61,7 +61,7 @@ let with_toggles tc backends =
          let drop banned l = if reaper then List.filter (fun f -> not (List.mem f banned)) l else l in
          let flags = drop [ "-flambda2-expert-phantom-lets"; "-dcfg-invariants" ] flags in
          let argv = drop [ "-dcmm-invariants" ] b.argv in
-         { name = p "%s %s" b.name (String.concat " " flags); argv = argv @ flags })
+         { name = [%string {|%{b.name} %{String.concat " " flags}|}]; argv = argv @ flags })
        else b)
     backends
 ;;

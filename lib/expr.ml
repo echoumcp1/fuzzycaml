@@ -28,7 +28,7 @@ let rec expr ctx env ty depth =
         let l = literal ctx ty in
         (* Sys.opaque_identity keeps the compiler from folding the value away. *)
         if (not (restricted ty)) && on "opaque" && flip ~p:0.15 ctx
-        then p "(Sys.opaque_identity %s)" l
+        then [%string "(Sys.opaque_identity %{l})"]
         else l)
     in
     let performs = List.filter (fun (_, _, r) -> r = ty) env.effs in
@@ -42,7 +42,7 @@ let rec expr ctx env ty depth =
     else if performs <> [] && flip ~p:0.2 ctx
     then (
       let c, a, _ = pick ctx performs in
-      p "(Effect.perform (%s %s))" c (e env a))
+      [%string "(Effect.perform (%{c} %{e env a}))"])
     else if env.effs <> [] && flip ~p:0.35 ctx
     then perform_let ctx env e (pick ctx env.effs) ty
     else (
@@ -61,7 +61,7 @@ let rec expr ctx env ty depth =
       match other with
       | (x, t) :: _ when flip ~p:0.3 ctx ->
         (* use the newest unused variable of another type *)
-        p "(if %s = %s then %s else %s)" (use (x, t)) (literal ctx t) (e env ty) (e env ty)
+        [%string "(if %{use (x, t)} = %{literal ctx t} then %{e env ty} else %{e env ty})"]
       | _ ->
       if !ox_mode && immediate ty && on "locals" && flip ~p:0.15 ctx
       then local_binding ctx env ty e

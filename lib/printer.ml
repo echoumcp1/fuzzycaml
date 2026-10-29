@@ -10,36 +10,27 @@ let rec printer = function
   | Int64 -> "Int64.to_string"
   | Str -> {|(Printf.sprintf "%S")|}
   | List t ->
-    p
-      {|(fun l -> "[" ^ String.concat "; " (List.map %s l) ^ "]")|}
-      (printer t)
+    [%string {|(fun l -> "[" ^ String.concat "; " (List.map %{printer t} l) ^ "]")|}]
   | Option t ->
-    p
-      {|(function None -> "None" | Some v -> "Some (" ^ %s v ^ ")")|}
-      (printer t)
+    [%string {|(function None -> "None" | Some v -> "Some (" ^ %{printer t} v ^ ")")|}]
   | Pair (a, b) ->
-    p
-      {|(fun (a, b) -> "(" ^ %s a ^ ", " ^ %s b ^ ")")|}
-      (printer a)
-      (printer b)
+    [%string {|(fun (a, b) -> "(" ^ %{printer a} a ^ ", " ^ %{printer b} b ^ ")")|}]
   | Arrow _ -> {|(fun _ -> "<fun>")|}
   | Arr t when (match t with U _ -> false | _ -> true) ->
-    p
-      {|(fun a -> "[|" ^ String.concat "; " (Array.to_list (Array.map %s a)) ^ "|]")|}
-      (printer t)
-  | Named i -> p "show_t%d" i
+    [%string {|(fun a -> "[|" ^ String.concat "; " (Array.to_list (Array.map %{printer t} a)) ^ "|]")|}]
+  | Named i -> [%string "show_t%{i#Int}"]
   | t when is_num t ->
     if is_float t
-    then p "(fun (x : %s) -> show_float %s)" (show_ty t) (convert t Float "x")
-    else p "(fun (x : %s) -> Int64.to_string %s)" (show_ty t) (convert t Int64 "x")
+    then [%string {|(fun (x : %{show_ty t}) -> show_float %{convert t Float "x"})|}]
+    else [%string {|(fun (x : %{show_ty t}) -> Int64.to_string %{convert t Int64 "x"})|}]
   | _ -> {|(fun _ -> "<unprintable>")|}
 ;;
 
 let declaration ?parent i decl =
   match decl with
   | Record fields ->
-    let field (f, t, m) = p "%s%s : %s" (if m then "mutable " else "") f (show_ty t) in
-    let show (f, t, _) = p {|"%s = " ^ %s v.%s|} f (printer t) f in
+    let field (f, t, m) = [%string {|%{if m then "mutable " else ""}%{f} : %{show_ty t}|}] in
+    let show (f, t, _) = [%string {|"%{f} = " ^ %{printer t} v.%{f}|}] in
     (* OxCaml requires a layout attribute on records of only boxed and unboxed
        floats. *)
     let has t = List.exists (fun (_, t', _) -> t' = t) fields in
@@ -63,18 +54,18 @@ let declaration ?parent i decl =
     p
       "type t%d = #{ %s }\n"
       i
-      (String.concat "; " (List.map (fun (f, t) -> p "%s : %s" f (show_ty t)) fields))
+      (String.concat "; " (List.map (fun (f, t) -> [%string "%{f} : %{show_ty t}"]) fields))
   | Variant constrs ->
     let constr (c, args) =
       match args with
       | [] -> c
-      | _ -> p "%s of %s" c (String.concat " * " (List.map show_ty args))
+      | _ -> [%string {|%{c} of %{String.concat " * " (List.map show_ty args)}|}]
     in
     let show (c, args) =
       match args with
-      | [] -> p {|%s -> "%s"|} c c
+      | [] -> [%string {|%{c} -> "%{c}"|}]
       | _ ->
-        let xs = List.mapi (fun j _ -> p "a%d" j) args in
+        let xs = List.mapi (fun j _ -> [%string "a%{j#Int}"]) args in
         p
           {|%s (%s) -> "%s (" ^ %s ^ ")"|}
           c
@@ -82,14 +73,14 @@ let declaration ?parent i decl =
           c
           (String.concat
              {| ^ ", " ^ |}
-             (List.map2 (fun x t -> p "%s %s" (printer t) x) xs args))
+             (List.map2 (fun x t -> [%string "%{printer t} %{x}"]) xs args))
     in
     let alts cs = String.concat " | " (List.map constr cs) in
     let body =
       match parent with
       | Some (j, inherited) ->
-        p "[ t%d | %s ]" j (alts (List.filter (fun c -> not (List.mem c inherited)) constrs))
-      | None when (fst (List.hd constrs)).[0] = '`' -> p "[ %s ]" (alts constrs)
+        [%string "[ t%{j#Int} | %{alts (List.filter (fun c -> not (List.mem c inherited)) constrs)} ]"]
+      | None when (fst (List.hd constrs)).[0] = '`' -> [%string "[ %{alts constrs} ]"]
       | None -> alts constrs
     in
     p

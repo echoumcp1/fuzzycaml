@@ -5,7 +5,7 @@ open Env
 
 (* [let x : t = <e> in ] for each variable. *)
 let lets e env vars =
-  String.concat "" (List.map (fun (x, t) -> p "let %s : %s = %s in " x (show_ty t) (e env t)) vars)
+  String.concat "" (List.map (fun (x, t) -> [%string "let %{x} : %{show_ty t} = %{e env t} in "]) vars)
 ;;
 
 (* Many ints and floats live across an opaque call, so some must be spilled. *)
@@ -59,19 +59,19 @@ let many_args ctx env ty e =
   in
   let args env first =
     let bound = List.map (fun (_, t) -> fresh ctx "b", t, arg env t) params in
-    ( String.concat "" (List.map (fun (y, t, v) -> p "let %s : %s = %s in " y (show_ty t) v) bound)
+    ( String.concat "" (List.map (fun (y, t, v) -> [%string "let %{y} : %{show_ty t} = %{v} in "]) bound)
     , String.concat " " (first :: List.map (fun (y, _, _) -> y) bound) )
   in
   let m = fresh ctx "m" in
   let outer_lets, outer = args env m in
-  let inner_lets, again = args inner (p "(%s - 1)" n) in
+  let inner_lets, again = args inner [%string "(%{n} - 1)"] in
   p
     "(let%s rec %s (%s : int) %s : %s = if %s <= 0 then %s else (%s%s %s) in let %s = %s \
      land 7 in %s%s %s)"
     (pick ctx [ ""; "[@inline never]" ])
     go
     n
-    (String.concat " " (List.map (fun (x, t) -> p "(%s : %s)" x (show_ty t)) params))
+    (String.concat " " (List.map (fun (x, t) -> [%string "(%{x} : %{show_ty t})"]) params))
     (show_ty ty)
     n
     (e inner ty)
@@ -81,7 +81,7 @@ let many_args ctx env ty e =
     m
     (e env Int)
     outer_lets
-    (choose ctx [ (fun () -> go); (fun () -> p "(%s [@inlined never])" go) ])
+    (choose ctx [ (fun () -> go); (fun () -> [%string "(%{go} [@inlined never])"]) ])
     outer
 ;;
 
@@ -89,52 +89,43 @@ let many_args ctx env ty e =
    must find them wherever the backend keeps them. *)
 let gc ctx env ty e =
   let vars = List.init (int_in ctx 2 6) (fun _ -> fresh ctx "g", fo_ty ctx) in
-  p
-    "(%s%s; %s)"
-    (lets e env vars)
-    (pick ctx [ "Gc.minor ()"; "Gc.minor ()"; "Gc.full_major ()"; "Gc.compact ()" ])
-    (e (bind_all env vars) ty)
+  [%string {|(%{lets e env vars}%{pick ctx [ "Gc.minor ()"; "Gc.minor ()"; "Gc.full_major ()"; "Gc.compact ()" ]}; %{e (bind_all env vars) ty})|}]
 ;;
 
 (* A string read at an offset inside the string's padding. *)
 let str_load ctx env e ty =
   let s = fresh ctx "s" in
-  let off = p "((%s land max_int) mod (String.length %s + 1))" (e env Int) s in
-  let padded = p "(%s ^ \"\\001\\002\\003\\004\\005\\006\\007\\008\")" s in
+  let off = [%string "((%{e env Int} land max_int) mod (String.length %{s} + 1))"] in
+  let padded = [%string "(%{s} ^ \"\\001\\002\\003\\004\\005\\006\\007\\008\")"] in
   let load =
     match ty with
     | Int ->
       choose
         ctx
-        [ (fun () -> p "String.get_uint8 %s %s" padded off)
-        ; (fun () -> p "String.get_int8 %s %s" padded off)
-        ; (fun () -> p "String.get_int16_le %s %s" padded off)
-        ; (fun () -> p "String.get_uint16_be %s %s" padded off)
-        ; (fun () -> p "Int32.to_int (String.get_int32_le %s %s)" padded off)
-        ; (fun () -> p "Int32.to_int (String.get_int32_be %s %s)" padded off)
+        [ (fun () -> [%string "String.get_uint8 %{padded} %{off}"])
+        ; (fun () -> [%string "String.get_int8 %{padded} %{off}"])
+        ; (fun () -> [%string "String.get_int16_le %{padded} %{off}"])
+        ; (fun () -> [%string "String.get_uint16_be %{padded} %{off}"])
+        ; (fun () -> [%string "Int32.to_int (String.get_int32_le %{padded} %{off})"])
+        ; (fun () -> [%string "Int32.to_int (String.get_int32_be %{padded} %{off})"])
         ; (fun () ->
-            p
-              "(if String.length %s = 0 then 0 else Char.code (String.unsafe_get %s ((%s \
-               land max_int) mod String.length %s)))"
-              s
-              s
-              (e env Int)
-              s)
+            [%string "(if String.length %{s} = 0 then 0 else Char.code (String.unsafe_get %{s} ((%{e env Int} \
+               land max_int) mod String.length %{s})))"])
         ]
     | Int64 ->
       choose
         ctx
-        [ (fun () -> p "String.get_int64_le %s %s" padded off)
-        ; (fun () -> p "String.get_int64_be %s %s" padded off)
+        [ (fun () -> [%string "String.get_int64_le %{padded} %{off}"])
+        ; (fun () -> [%string "String.get_int64_be %{padded} %{off}"])
         ]
     | _ ->
       choose
         ctx
-        [ (fun () -> p "%s.[%s]" padded off)
-        ; (fun () -> p "String.unsafe_get %s %s" padded off)
+        [ (fun () -> [%string "%{padded}.[%{off}]"])
+        ; (fun () -> [%string "String.unsafe_get %{padded} %{off}"])
         ]
   in
-  p "(let %s = %s in %s)" s (e env Str) load
+  [%string "(let %{s} = %{e env Str} in %{load})"]
 ;;
 
 (* A match on literals that share prefixes around the 8-byte word, for the

@@ -73,7 +73,7 @@ let check ~ox ~effect_syntax backends tc =
     Option.iter
       (fun dir ->
          Out_channel.with_open_bin
-           (Filename.concat dir (p "known%d-%d.ml" (Unix.getpid ()) !known))
+           (Filename.concat dir [%string "known%{Unix.getpid ()#Int}-%{!known#Int}.ml"])
            (fun oc -> output_string oc source))
       (Sys.getenv_opt "FUZZYCAML_SAVE");
     assume tc false);

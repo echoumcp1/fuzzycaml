@@ -107,23 +107,23 @@ let rec pattern ?(top = false) ctx ty depth ~binds =
       ; (fun () ->
           let ph, bh = sub t in
           let pt, bt = sub ty in
-          p "(%s :: %s)" ph pt, bh @ bt)
+          [%string "(%{ph} :: %{pt})"], bh @ bt)
       ; (fun () ->
           let a, ba = sub t in
           let b, bb = sub t in
-          p "[%s; %s]" a b, ba @ bb)
+          [%string "[%{a}; %{b}]"], ba @ bb)
       ]
     | Option t ->
       [ (fun () -> none "None")
       ; (fun () ->
           let a, ba = sub t in
-          p "(Some %s)" a, ba)
+          [%string "(Some %{a})"], ba)
       ]
     | Pair (a, b) ->
       [ (fun () ->
           let pa, ba = sub a in
           let pb, bb = sub b in
-          p "(%s, %s)" pa pb, ba @ bb)
+          [%string "(%{pa}, %{pb})"], ba @ bb)
       ]
     | Named i ->
       (match ctx.decls.(i) with
@@ -139,7 +139,7 @@ let rec pattern ?(top = false) ctx ty depth ~binds =
                  "{ %s_ }"
                  (String.concat
                     ""
-                    (List.map (fun (f, (q, _)) -> p "%s = %s; " f q) parts))
+                    (List.map (fun (f, (q, _)) -> [%string "%{f} = %{q}; "]) parts))
              , List.concat_map (fun (_, (_, b)) -> b) parts ))
          ]
        | Variant constrs ->
@@ -157,7 +157,7 @@ let rec pattern ?(top = false) ctx ty depth ~binds =
       [ (fun () ->
           let a, _ = pattern ctx ty (depth - 1) ~binds:false in
           let b, _ = pattern ctx ty (depth - 1) ~binds:false in
-          none (p "(%s | %s)" a b))
+          none [%string "(%{a} | %{b})"])
       ]
       @
       if binds
@@ -165,7 +165,7 @@ let rec pattern ?(top = false) ctx ty depth ~binds =
         [ (fun () ->
             let q, bq = sub ty in
             let x = fresh ctx "q" in
-            p "(%s as %s)" q x, (x, ty) :: bq)
+            [%string "(%{q} as %{x})"], (x, ty) :: bq)
         ]
       else []
   in

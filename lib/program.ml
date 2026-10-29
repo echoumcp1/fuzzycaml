@@ -84,7 +84,7 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
          let base () = choose ctx [ (fun () -> Int); (fun () -> Bool); (fun () -> fo_ty ctx) ] in
          let a = base () in
          let r = base () in
-         Buffer.add_string buf (p "type _ Effect.t += %s : %s -> %s Effect.t\n" c (show_ty a) (show_ty r));
+         Buffer.add_string buf [%string "type _ Effect.t += %{c} : %{show_ty a} -> %{show_ty r} Effect.t\n"];
          c, a, r);
   let env = ref { vars = []; locals = []; in_try = false; effs = []; muts = []; in_fun = false } in
   let globals =
@@ -93,8 +93,8 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
       let ty = if flip ctx then Bool else Int in
       Buffer.add_string
         buf
-        (p "let %s : %s Atomic.t = Atomic.make %s\n" g (show_ty ty) (literal ctx ty));
-      env := bind !env (p "(Atomic.get %s)" g) ty;
+        [%string "let %{g} : %{show_ty ty} Atomic.t = Atomic.make %{literal ctx ty}\n"];
+      env := bind !env [%string "(Atomic.get %{g})"] ty;
       g, ty)
   in
   let statement () =
@@ -105,11 +105,7 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
       let e env t = expr ctx env t (depth - 1) in
       Buffer.add_string
         buf
-        (p
-           "let () = %s\nlet () = print_endline (%s (Atomic.get %s))\n"
-           (atomic_op ctx !env g ty e)
-           (printer ty)
-           g)
+        [%string "let () = %{atomic_op ctx !env g ty e}\nlet () = print_endline (%{printer ty} (Atomic.get %{g}))\n"]
   in
   let boundary = ref (not (on "modules")) in
   ignore @@ repeat ctx 1 6 (fun _ ->
@@ -126,20 +122,14 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     let v = fresh ctx "v" in
     Buffer.add_string
       buf
-      (p
-         "let %s : %s = %s\nlet () = print_endline (%s %s)\n"
-         v
-         (show_ty ty)
-         (expr ctx !env ty depth)
-         (printer ty)
-         v);
+      [%string "let %{v} : %{show_ty ty} = %{expr ctx !env ty depth}\nlet () = print_endline (%{printer ty} %{v})\n"];
     env := bind !env v ty);
   let conversions =
     String.concat
       ""
       (List.rev_map
          (fun (name, (a, b)) ->
-            p "external %s : %s -> %s = \"%%%s_of_%s\"\n" name (show_ty a) (show_ty b) (num_name b) (num_name a))
+            [%string "external %{name} : %{show_ty a} -> %{show_ty b} = \"%%{num_name b}_of_%{num_name a}\"\n"])
          !convs)
   in
   if on "effargs" then Buffer.add_string buf "let () = print_endline (string_of_int !ticks)\n";

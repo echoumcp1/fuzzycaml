@@ -18,7 +18,7 @@ type exit =
 
 (* Runs [argv] in [dir], returning its exit and its stdout and stderr. *)
 let spawn ~dir argv =
-  let out = Filename.concat dir (p "out%d" (Random.bits ())) in
+  let out = Filename.concat dir [%string "out%{Random.bits ()#Int}"] in
   let err = out ^ ".err" in
   let fd path = Unix.openfile path [ O_WRONLY; O_CREAT; O_TRUNC ] 0o644 in
   let fo = fd out
@@ -52,8 +52,8 @@ let wait_all ~timeout pids =
 ;;
 
 let show_exit = function
-  | Exited c -> p "exit %d" c
-  | Signaled s -> p "signal %d" s
+  | Exited c -> [%string "exit %{c#Int}"]
+  | Signaled s -> [%string "signal %{s#Int}"]
   | Timeout -> "timeout"
 ;;
 
@@ -153,7 +153,7 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
          | [], [], [], _ -> []
          | (_, cout) :: compiles, status :: compiled, None :: runs, ran ->
            let o, e = cout () in
-           Compile_error (p "%s\n%s%s" (show_exit status) o e)
+           Compile_error [%string "%{show_exit status}\n%{o}%{e}"]
            :: combine compiles compiled runs ran
          | _ :: compiles, _ :: compiled, Some (_, rout) :: runs, status :: ran ->
            let o, e = rout () in
@@ -176,8 +176,8 @@ let observable = function
 (* Backends with identical results are listed together. *)
 let report backends results =
   let body = function
-    | Compile_error msg -> p "compile error\n%s" msg
-    | Ran (status, out, err) -> p "%s\n%s%s" (show_exit status) out err
+    | Compile_error msg -> [%string "compile error\n%{msg}"]
+    | Ran (status, out, err) -> [%string "%{show_exit status}\n%{out}%{err}"]
   in
   List.fold_left2
     (fun groups b r ->
@@ -191,6 +191,6 @@ let report backends results =
     []
     backends
     results
-  |> List.map (fun (text, names) -> p "--- %s: %s" (String.concat ", " names) text)
+  |> List.map (fun (text, names) -> [%string {|--- %{String.concat ", " names}: %{text}|}])
   |> String.concat "\n"
 ;;

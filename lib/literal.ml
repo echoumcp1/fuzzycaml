@@ -37,7 +37,7 @@ let rec float_literal ctx =
     ; (fun () ->
         paren
           (p "%h" (draw_silent ctx.tc (floats ~allow_nan:false ~allow_infinity:false ()))))
-    ; (fun () -> p "(Int64.float_of_bits %s)" (float_bits ctx))
+    ; (fun () -> [%string "(Int64.float_of_bits %{float_bits ctx})"])
     ]
 
 (* Edge-case bit patterns: subnormals, the largest finite value, powers of two
@@ -91,8 +91,8 @@ let num_literal ctx t =
   let f32 () =
     choose
       ctx
-      [ (fun () -> p "(F32.of_float %s)" (float_literal ctx))
-      ; (fun () -> p "(F32.of_bits %s)" (float32_bits ctx))
+      [ (fun () -> [%string "(F32.of_float %{float_literal ctx})"])
+      ; (fun () -> [%string "(F32.of_bits %{float32_bits ctx})"])
       ]
   in
   match t with
@@ -159,25 +159,25 @@ let rec literal ctx ty =
     choose
       ctx
       [ (fun () -> "[]")
-      ; (fun () -> p "[%s]" (literal ctx t))
-      ; (fun () -> p "[%s; %s; %s]" (literal ctx t) (literal ctx t) (literal ctx t))
+      ; (fun () -> [%string "[%{literal ctx t}]"])
+      ; (fun () -> [%string "[%{literal ctx t}; %{literal ctx t}; %{literal ctx t}]"])
       ]
   | Option t ->
-    if flip ctx then p "(Some %s)" (literal ctx t) else "None"
-  | Pair (a, b) -> p "(%s, %s)" (literal ctx a) (literal ctx b)
-  | Arrow (a, b) -> p "(fun (_ : %s) -> %s)" (show_ty a) (literal ctx b)
+    if flip ctx then [%string "(Some %{literal ctx t})"] else "None"
+  | Pair (a, b) -> [%string "(%{literal ctx a}, %{literal ctx b})"]
+  | Arrow (a, b) -> [%string "(fun (_ : %{show_ty a}) -> %{literal ctx b})"]
   | U UF ->
     choose
       ctx
       [ (fun () -> "#0.")
       ; (fun () -> "#1.")
       ; (fun () -> "#0x1.8p+1")
-      ; (fun () -> p "(unbox_float %s)" (float_literal ctx))
+      ; (fun () -> [%string "(unbox_float %{float_literal ctx})"])
       ]
   | Num _ | U _ -> num_literal ctx ty
-  | UTuple ts -> p "#(%s)" (String.concat ", " (List.map (literal ctx) ts))
+  | UTuple ts -> [%string {|#(%{String.concat ", " (List.map (literal ctx) ts)})|}]
   | Or_null t ->
-    if flip ctx then p "(This %s)" (literal ctx t) else "Null"
+    if flip ctx then [%string "(This %{literal ctx t})"] else "Null"
   | Arr t -> p "[| %s |]" (String.concat "; " (List.init (int_in ctx 1 3) (fun _ -> literal ctx t)))
   | Named i ->
     (match ctx.decls.(i) with
@@ -186,16 +186,16 @@ let rec literal ctx ty =
          "{ %s }"
          (String.concat
             "; "
-            (List.map (fun (f, t, _) -> p "%s = %s" f (literal ctx t)) fields))
+            (List.map (fun (f, t, _) -> [%string "%{f} = %{literal ctx t}"]) fields))
      | Variant constrs ->
        let c, args = pick ctx constrs in
        construct c (List.map (literal ctx) args)
      | URecord fields ->
-       p "#{ %s }" (String.concat "; " (List.map (fun (f, t) -> p "%s = %s" f (literal ctx t)) fields)))
+       [%string {|#{ %{String.concat "; " (List.map (fun (f, t) -> p "%s = %s" f (literal ctx t)) fields)} }|}])
 
 and construct c = function
   | [] -> c
-  | args -> p "(%s (%s))" c (String.concat ", " args)
+  | args -> [%string {|(%{c} (%{String.concat ", " args}))|}]
 ;;
 
 (* [raise Exit] at any type. raise only has value types, so unboxed results are
@@ -204,12 +204,12 @@ let rec raise_at ctx ty =
   match ty with
   | U UF -> "(unbox_float (raise Exit))"
   | U _ -> convert (boxed_of ty) ty "(raise Exit)"
-  | UTuple ts -> p "#(%s)" (String.concat ", " (List.map (raise_at ctx) ts))
+  | UTuple ts -> [%string {|#(%{String.concat ", " (List.map (raise_at ctx) ts)})|}]
   | Or_null _ -> "(This (raise Exit))"
   | Named i ->
     (match ctx.decls.(i) with
      | URecord fields ->
-       p "#{ %s }" (String.concat "; " (List.map (fun (f, t) -> p "%s = %s" f (raise_at ctx t)) fields))
+       [%string {|#{ %{String.concat "; " (List.map (fun (f, t) -> p "%s = %s" f (raise_at ctx t)) fields)} }|}]
      | _ -> "(raise Exit)")
   | _ -> "(raise Exit)"
 ;;

@@ -33,27 +33,27 @@ let arm ctx env ty e ~resume ~discontinue (_, a, r) =
       ctx
       ([ resumed
        ; (fun () ->
-           p "(let %s : %s = %s in %s)" res (show_ty ty) (resumed ()) (e (bind henv res ty) ty))
-       ; (fun () -> p "(ignore %s; %s)" k (e henv ty))
+           [%string "(let %{res} : %{show_ty ty} = %{resumed ()} in %{e (bind henv res ty) ty})"])
+       ; (fun () -> [%string "(ignore %{k}; %{e henv ty})"])
        ]
        @
        if discontinue && env.in_try
-       then [ (fun () -> p "Effect.Deep.discontinue %s Exit" k) ]
+       then [ (fun () -> [%string "Effect.Deep.discontinue %{k} Exit"]) ]
        else []) )
 ;;
 
-let deep_resume k v r = p "Effect.Deep.continue %s (%s : %s)" k v (show_ty r)
+let deep_resume k v r = [%string "Effect.Deep.continue %{k} (%{v} : %{show_ty r})"]
 
 (* A handler's exnc: it catches Exit if [catch]. *)
 let exnc env ty e catch =
-  if catch then p "(function Exit -> %s | ex -> raise ex)" (e env ty) else "raise"
+  if catch then [%string "(function Exit -> %{e env ty} | ex -> raise ex)"] else "raise"
 ;;
 
 (* Performs [c] with an argument of type [a] and binds its result of type [r]
    in a body of type [ty]. *)
 let perform_let ctx env e (c, a, r) ty =
   let y = fresh ctx "y" in
-  p "(let %s : %s = Effect.perform (%s %s) in %s)" y (show_ty r) c (e env a) (e (bind env y r) ty)
+  [%string "(let %{y} : %{show_ty r} = Effect.perform (%{c} %{e env a}) in %{e (bind env y r) ty})"]
 ;;
 
 (* A deep handler for some of the program's effects around a body of type [b]. *)
@@ -63,13 +63,7 @@ let handler ctx env ty e =
   let exnc = exnc env ty e catch in
   let arm ((c, _, _) as eff) =
     let v, k, body = arm ctx env ty e ~resume:deep_resume ~discontinue:true eff in
-    p
-      "| %s %s -> Some (fun (%s : (a, %s) Effect.Deep.continuation) -> %s)"
-      c
-      v
-      k
-      (show_ty ty)
-      body
+    [%string "| %{c} %{v} -> Some (fun (%{k} : (a, %{show_ty ty}) Effect.Deep.continuation) -> %{body})"]
   in
   p
     "(Effect.Deep.match_with (fun () -> %s) () { Effect.Deep.retc = (fun (%s : %s) -> \
@@ -93,15 +87,9 @@ let shallow ctx env ty e =
   let x = fresh ctx "x" in
   let exnc = exnc env ty e catch in
   let arm ((c, _, _) as eff) =
-    let resume k v _ = p "%s %s %s" go k v in
+    let resume k v _ = [%string "%{go} %{k} %{v}"] in
     let v, k, body = arm ctx env ty e ~resume ~discontinue:false eff in
-    p
-      "| %s %s -> Some (fun (%s : (a, %s) Effect.Shallow.continuation) -> %s)"
-      c
-      v
-      k
-      (show_ty b)
-      body
+    [%string "| %{c} %{v} -> Some (fun (%{k} : (a, %{show_ty b}) Effect.Shallow.continuation) -> %{body})"]
   in
   p
     "(let rec %s : type %s. (%s, %s) Effect.Shallow.continuation -> %s -> %s = fun k v \
@@ -129,7 +117,7 @@ let effect_match ctx env ty e =
   let x = fresh ctx "x" in
   let arm ((c, _, _) as eff) =
     let v, k, body = arm ctx env ty e ~resume:deep_resume ~discontinue:true eff in
-    p "| effect %s %s, %s -> %s" c v k body
+    [%string "| effect %{c} %{v}, %{k} -> %{body}"]
   in
   p
     "(match %s with | %s -> %s %s%s)"
@@ -137,5 +125,5 @@ let effect_match ctx env ty e =
     x
     (e (bind env x b) ty)
     (String.concat " " (List.map arm handled))
-    (if catch then p " | exception Exit -> %s" (e env ty) else "")
+    (if catch then [%string " | exception Exit -> %{e env ty}"] else "")
 ;;
