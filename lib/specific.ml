@@ -43,7 +43,7 @@ let specific ctx env ty e =
       ; (fun () -> p "(sgn (Int64.compare %s %s))" (e env Int64) (e env Int64))
       ]
     @ (if !ox_mode && on "numbers" then [ List.hd (num_ops ctx env Int e) ] else [])
-    @ (if !ox_mode && on "arrays"
+    @ (if on "arrays"
        then [ (fun () -> p "(array_length %s)" (e env (Arr (array_elem ctx 1)))) ]
        else [])
   | Bool ->
@@ -244,6 +244,19 @@ let specific ctx env ty e =
              p "(Array.init %s (fun (%s : int) -> %s))" (n ()) i (e (bind (closure env) i Int) t))
          ]
        | _ -> [])
+    (* The compiler picks how to store an array from its element type, so these
+       hide that type behind a GADT, a polymorphic function or a call. *)
+    @ (match t with
+       | U _ -> []
+       | _ ->
+         let w () = pick ctx ("AwAny" :: (match t with Float -> [ "AwFloat" ] | Int -> [ "AwInt" ] | _ -> [])) in
+         [ (fun () -> p "(arr_of %s %s %s)" (w ()) (n ()) (e env t))
+         ; (fun () -> p "(arr_poly %s %s)" (n ()) (e env t))
+         ; (fun () -> p "(arr_copy %s)" (e env ty))
+         ; (fun () ->
+             let mk = fresh ctx "mk" in
+             p "(let %s (type a) (x : a) (y : a) : a array = [| x; y; x |] in %s %s %s)" mk mk (e env t) (e env t))
+         ])
   | List t ->
     [ (fun () -> p "(%s :: %s)" (e env t) (e env ty))
     ; (fun () -> p "[%s; %s]" (e env t) (e env t))

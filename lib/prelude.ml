@@ -34,6 +34,17 @@ let rec geval : type a. a gx -> a = function
   | GLit v -> v
 let gbump : type a. a gx -> a -> a = fun g v ->
   match g with GInt _ -> v + 1 | GBool _ -> not v | GAdd _ -> v - 1 | GLe _ -> v | _ -> v
+type _ aw = AwFloat : float aw | AwInt : int aw | AwAny : 'a aw
+let arr_of : type a. a aw -> int -> a -> a array = fun w n x ->
+  match w with
+  | AwFloat -> Array.make n (x +. 0.)
+  | AwInt -> Array.make n (x + 0)
+  | AwAny -> Array.make n x
+let arr_get : type a. a aw -> a array -> int -> a = fun w a i ->
+  let i = (i land max_int) mod Array.length a in
+  match w with AwFloat -> a.(i) | AwInt -> a.(i) | AwAny -> a.(i)
+let[@inline never] arr_poly n x = Array.make n x
+let[@inline never] arr_copy a = Array.map (fun x -> x) a
 |}
   ^
   if !ox_mode
@@ -67,5 +78,10 @@ let fsat w f =
   else if f < -. b then (if w = 64 then Int64.min_int else Int64.neg (Int64.shift_left 1L (w - 1)))
   else Int64.of_float f
 |}
-  else ""
+  else
+    {|external array_make : int -> 'a -> 'a array = "caml_make_vect"
+external array_get : 'a array -> int -> 'a = "%array_safe_get"
+external array_set : 'a array -> int -> 'a -> unit = "%array_safe_set"
+external array_length : 'a array -> int = "%array_length"
+|}
 ;;

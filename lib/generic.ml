@@ -278,6 +278,22 @@ let generic ctx env ty e =
              fields
          | Variant _ -> [])
       (indexed_decls ctx)
+  (* Reading an array at an in-bounds index. OxCaml arrays hold numbers. *)
+  @ (if on "arrays"
+        && if !ox_mode then is_num ty || (match ty with Arr _ -> true | _ -> false) else value
+     then
+       [ (fun () ->
+           let a = fresh ctx "a" in
+           p "(let %s = %s in array_get %s ((%s land max_int) mod array_length %s))" a (e env (Arr ty)) a (e env Int) a)
+       ]
+       @
+       match ty with
+       | Float | Int ->
+         [ (fun () ->
+             p "(arr_get %s %s %s)" (if ty = Float then "AwFloat" else "AwInt") (e env (Arr ty)) (e env Int))
+         ]
+       | _ -> []
+     else [])
   @ (if !ox_mode then ox_forms ctx env ty e else [])
   @ (if env.in_try
      then [ (fun () -> raise_at ctx ty) ]

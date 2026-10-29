@@ -26,7 +26,9 @@ end
    - OxCaml arm64: fmov with a float32# constant it cannot encode,
      (1 + m/16) * 2^k for k in 61..68.
    - OxCaml -flambda2-match-in-match at -O3: a match alias left free in the
-     unit. *)
+     unit.
+   - Flambda: a float array built in a GADT branch that is dead for the
+     element type. *)
 let known_compile_crash msg =
   List.exists
     (contains msg)
@@ -36,6 +38,7 @@ let known_compile_crash msg =
     ; "While verifying locations destroyed at raise"
     ; "CFG comparison MISMATCH"
     ; "not expected to be free in whole-compilation-unit term"
+    ; "Bad definition for float array member"
     ]
   || (contains msg "expected compatible register or floating-point constant"
       && contains msg "fmov")

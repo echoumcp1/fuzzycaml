@@ -87,7 +87,7 @@ let v3 : (int * string) list = <expression>
 let () = print_endline (<printer for (int * string) list> v3)
 ```
 
-Types are `int`, `bool`, `float`, `char`, `int64`, `string`, lists, options, pairs, functions, and declared records and variants (including polymorphic variants). With `--ox` there are also `float32`, small and unboxed integers, `float#` and other unboxed numbers, unboxed tuples and records, `or_null`, and arrays.
+Types are `int`, `bool`, `float`, `char`, `int64`, `string`, lists, options, pairs, functions, arrays, and declared records and variants (including polymorphic variants). Some arrays are built behind a GADT, a polymorphic function or a call, so the compiler cannot see whether they hold floats. With `--ox` there are also `float32`, small and unboxed integers, `float#` and other unboxed numbers, unboxed tuples and records, and `or_null`; arrays then hold only numbers.
 
 Each program enables a random subset of features, listed on its first line as `(* features: ... *)`. Disabled features are never generated, and enabled ones are weighted up. With the `modules` feature, the program is split at `(* module boundary *)` into `m1.ml` and `prog.ml` and compiled without `-opaque`, so code is inlined across modules.
 
@@ -123,6 +123,7 @@ During shrinking, only the reference and the first disagreeing backend are run. 
 - OxCaml `-dcmm-invariants` with unboxed products: programs containing `#(` or `#{` are compiled without the check.
 - OxCaml arm64: `float32#` constants (1 + m/16) × 2^k with k from 61 to 68 are emitted as invalid `fmov` immediates.
 - OxCaml `-flambda2-match-in-match`: `Variable ... not expected to be free in whole-compilation-unit term`.
+- Flambda: `Bad definition for float array member` for a float array built in a GADT branch that is dead for the element type.
 - OxCaml `-Oclassic`: `While verifying locations destroyed at raise` for a `try` whose body cannot raise.
 - Native effects: a shallow handler left pointing into the minor heap after a nested `perform`. Matches when every odd backend crashes and fails `Assertion failed: !Is_young(v)` with the debug runtime.
 - Trunk `-linscan` and `Atomic`: matches when the odd backends are trunk `-linscan` and agree with the reference after `Atomic` is replaced by ordinary functions. `-linscan` backends always get this replacement.

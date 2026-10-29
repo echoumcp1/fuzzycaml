@@ -39,7 +39,7 @@ let rec gen_ty ?(unboxed = false) ctx ~first_order depth =
           ]
         else [])
      @ (if unboxed && depth > 0 && ox "or_null" then [ (fun () -> Or_null (sub ())) ] else [])
-     @ (if (not first_order) && depth > 0 && ox "arrays"
+     @ (if (not first_order) && depth > 0 && on "arrays"
         then [ (fun () -> Arr (array_elem ctx (depth - 1))) ]
         else [])
      @ (if depth = 0
@@ -60,12 +60,18 @@ let rec gen_ty ?(unboxed = false) ctx ~first_order depth =
            Arrow (a, gen_ty ~unboxed:true ctx ~first_order (depth - 1)))
        ])
 
-(* Arrays hold numbers, boxed or not, or arrays of them. *)
+(* In OxCaml, arrays hold numbers, boxed or not, or arrays of them. Otherwise
+   they hold any type, but floats more often, since float arrays are stored
+   flat. *)
 and array_elem ctx depth =
   choose
     ctx
     ([ (fun () -> Int); (fun () -> Float); (fun () -> Int64) ]
-     @ (if on "numbers" then List.map (fun t () -> t) newer_nums else [ (fun () -> float_u) ])
+     @ (if not !ox_mode
+        then [ (fun () -> Float); (fun () -> gen_ty ctx ~first_order:false depth) ]
+        else if on "numbers"
+        then List.map (fun t () -> t) newer_nums
+        else [ (fun () -> float_u) ])
      @ if depth > 0 then [ (fun () -> Arr (array_elem ctx (depth - 1))) ] else [])
 ;;
 

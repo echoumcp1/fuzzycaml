@@ -65,9 +65,8 @@ let local_binding ctx env ty e =
   p "(let local_ %s : %s = %s in %s)" x (show_ty s) source (e (bind_local env x s) ty)
 ;;
 
-(* OxCaml forms at any type: destructuring an unboxed tuple or an or_null,
-   reading an array at an in-bounds index, and a [let mutable] updated in a
-   loop. *)
+(* OxCaml forms at any type: destructuring an unboxed tuple or an or_null, and
+   a [let mutable] updated in a loop. *)
 let ox_forms ctx env ty e =
   (if on "utuples"
    then
@@ -99,13 +98,6 @@ let ox_forms ctx env ty e =
            in
            let x = fresh ctx "x" in
            p "(match %s with Null -> %s | This %s -> %s)" (e env (Or_null s)) (e env ty) x (e (bind env x s) ty))
-       ]
-     else [])
-  @ (if on "arrays" && (is_num ty || match ty with Arr _ -> true | _ -> false)
-     then
-       [ (fun () ->
-           let a = fresh ctx "a" in
-           p "(let %s = %s in array_get %s ((%s land max_int) mod array_length %s))" a (e env (Arr ty)) a (e env Int) a)
        ]
      else [])
   @

@@ -23,6 +23,10 @@ let rec printer = function
       (printer a)
       (printer b)
   | Arrow _ -> {|(fun _ -> "<fun>")|}
+  | Arr t when (match t with U _ -> false | _ -> true) ->
+    p
+      {|(fun a -> "[|" ^ String.concat "; " (Array.to_list (Array.map %s a)) ^ "|]")|}
+      (printer t)
   | Named i -> p "show_t%d" i
   | t when is_num t ->
     if is_float t
