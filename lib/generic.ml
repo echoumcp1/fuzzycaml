@@ -302,6 +302,7 @@ let generic ctx env ty e =
      then [ (fun () -> local_binding ctx env ty e) ]
      else [])
   @ boost (if value && on "partial" then [ (fun () -> partial ctx env ty e) ] else [])
+  @ boost (if on "effargs" && (not env.in_try) && (not env.in_fun) && env.effs = [] then effectful ctx env ty e else [])
   @ boost (if fo && ctx.effects <> [] && on "deep" then [ (fun () -> handler ctx env ty e) ] else [])
   @ boost (if fo && ctx.effects <> [] && on "shallow" then [ (fun () -> shallow ctx env ty e) ] else [])
   @ boost (if fo && ctx.effects <> [] && !use_effect_syntax && on "effect_syntax"

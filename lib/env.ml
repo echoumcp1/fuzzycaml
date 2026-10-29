@@ -10,12 +10,13 @@ type env =
   ; in_try : bool
   ; effs : (string * ty * ty) list (* effects handled by an enclosing handler *)
   ; muts : (string * ty) list (* [let mutable]s, which no closure can use *)
+  ; in_fun : bool (* inside a function, which may be called where order matters *)
   }
 
 let bind env x t = { env with vars = (x, t) :: env.vars }
 let bind_all env vars = List.fold_left (fun env (x, t) -> bind env x t) env vars
 let bind_local env x t = { env with locals = (x, t) :: env.locals }
-let closure env = { env with locals = []; muts = [] }
+let closure env = { env with locals = []; muts = []; in_fun = true }
 
 (* For a function that may be called outside the enclosing handlers. *)
 let escape env = { (closure env) with effs = [] }

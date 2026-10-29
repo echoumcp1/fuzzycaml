@@ -378,3 +378,61 @@ let nonzero ctx =
         paren (string_of_int (if n = 0 then 3 else n)))
     ]
 ;;
+
+(* Subexpressions that add to the global [ticks], which the program prints last.
+   Additions commute, so the total only changes if a compiler drops or repeats
+   one. Only used outside functions and where nothing else can raise or
+   perform, so evaluation order cannot change the result. *)
+let effectful ctx env ty e =
+  let tick t () = p "(ticks := !ticks + %d; %s)" (int_in ctx 1 99) (e env t) in
+  let value = not (restricted ty) in
+  [ tick ty ]
+  @ (if value
+     then
+       [ (fun () ->
+           (* the tick belongs to the partial application, so it happens once *)
+           let g = fresh ctx "g" in
+           let x = fresh ctx "x" in
+           let y = fresh ctx "y" in
+           let s = env_ty ctx env some_ty in
+           let body = e (bind (bind (closure env) x s) y Int) ty in
+           p
+             "(let %s = (ticks := !ticks + %d; fun (%s : %s) (%s : int) -> %s) %s in let _ = %s %s in %s %s)"
+             g
+             (int_in ctx 1 99)
+             x
+             (show_ty s)
+             y
+             body
+             (paren (e env s))
+             g
+             (paren (e env Int))
+             g
+             (paren (e env Int)))
+       ; (fun () ->
+           let x = fresh ctx "x" in
+           p "(ignore ((ticks := !ticks + %d; fun (%s : int) (_ : int) -> %s) 0); %s)" (int_in ctx 1 99) x (e (bind (closure env) x Int) Int) (e env ty))
+       ]
+     else [])
+  @
+  match ty with
+  | Int ->
+    [ (fun () -> p "(%s * 0)" (tick Int ()))
+    ; (fun () -> p "(0 * %s)" (tick Int ()))
+    ; (fun () -> p "(%s land 0)" (tick Int ()))
+    ; (fun () -> p "(%s lor (-1))" (tick Int ()))
+    ; (fun () ->
+        let op = pick ctx [ "/"; "mod" ] in
+        let d = choose ctx [ (fun () -> "0"); tick Int; (fun () -> p "(ticks := !ticks + %d; 0)" (int_in ctx 1 99)) ] in
+        let n = choose ctx [ (fun () -> "0"); tick Int ] in
+        p "(try %s %s %s with Division_by_zero -> %s)" n op d (e env Int))
+    ]
+  | Int64 ->
+    [ (fun () -> p "(Int64.mul %s 0L)" (tick Int64 ()))
+    ; (fun () ->
+        let f = pick ctx [ "Int64.div"; "Int64.rem" ] in
+        let d = choose ctx [ (fun () -> "0L"); tick Int64; (fun () -> p "(ticks := !ticks + %d; 0L)" (int_in ctx 1 99)) ] in
+        p "(try %s %s %s with Division_by_zero -> %s)" f (tick Int64 ()) d (e env Int64))
+    ]
+  | _ -> []
+;;

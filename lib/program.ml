@@ -86,7 +86,7 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
          let r = base () in
          Buffer.add_string buf (p "type _ Effect.t += %s : %s -> %s Effect.t\n" c (show_ty a) (show_ty r));
          c, a, r);
-  let env = ref { vars = []; locals = []; in_try = false; effs = []; muts = [] } in
+  let env = ref { vars = []; locals = []; in_try = false; effs = []; muts = []; in_fun = false } in
   let globals =
     List.init (if on "atomics" then int_in ctx 0 2 else 0) (fun _ ->
       let g = fresh ctx "g" in
@@ -142,5 +142,6 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
             p "external %s : %s -> %s = \"%%%s_of_%s\"\n" name (show_ty a) (show_ty b) (num_name b) (num_name a))
          !convs)
   in
+  if on "effargs" then Buffer.add_string buf "let () = print_endline (string_of_int !ticks)\n";
   head ^ conversions ^ Buffer.contents buf
 ;;

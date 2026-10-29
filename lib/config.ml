@@ -12,7 +12,7 @@ let twins : (int * int) list ref = ref []
 (* Swarm testing: each program enables a random subset of features, and
    shrinking can disable the ones a failure does not need. *)
 let all_features =
-  [ "arrays"; "atomics"; "deep"; "effect_syntax"; "effects"; "exits"; "exns"; "gadt"; "gc"; "lazy"
+  [ "arrays"; "atomics"; "deep"; "effargs"; "effect_syntax"; "effects"; "exits"; "exns"; "gadt"; "gc"; "lazy"
   ; "locals"; "loops"; "manyargs"; "modules"; "opaque"; "partial"; "poly"; "records"
   ; "recvals"; "samebranch"; "shallow"; "strings"; "tmc"
     (* OxCaml only *)
