@@ -14,7 +14,7 @@ dune exec bin/fuzzycaml.exe -- [--sample] [--ox] [TEST_CASES]
 - `--ox`: generate OxCaml-only features and test only OxCaml (flambda2) switches.
 
 Environment variables:
-- `FUZZYCAML_SWITCHES=a,b`: use only these opam switches.
+- `FUZZYCAML_SWITCHES=a,b`: use only these opam switches, in this order; the first is the reference.
 - `FUZZYCAML_EXTRA="name=compiler flags;..."`: add backends.
 - `FUZZYCAML_DATABASE=dir`: save failures in Hegel's database at `dir`, so a later run replays them first.
 - `FUZZYCAML_FEATURES=a,b`: enable these features in every program (see `all_features` in `lib/config.ml`).

@@ -25,13 +25,13 @@ let discover ~ox =
     | Some out -> String.split_on_char '\n' out |> List.filter (( <> ) "")
     | None -> []
   in
-  (* FUZZYCAML_SWITCHES="a,b" restricts discovery to those switches. *)
+  (* FUZZYCAML_SWITCHES="a,b" restricts discovery to those switches, in that
+     order. The first backend is the reference. *)
   let switches =
     match Sys.getenv_opt "FUZZYCAML_SWITCHES" with
     | None -> switches
     | Some only ->
-      let only = String.split_on_char ',' only in
-      List.filter (fun s -> List.mem s only) switches
+      List.filter (fun s -> List.mem s switches) (String.split_on_char ',' only)
   in
   List.filter_map switch_bin switches
   |> List.concat_map (fun (switch, bin) ->
