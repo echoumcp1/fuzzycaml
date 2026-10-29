@@ -319,8 +319,9 @@ let effectful ctx env ty e =
     ; (fun () -> [%string "(%{tick Int ()} lor (-1))"])
     ; (fun () ->
         let op = pick ctx [ "/"; "mod" ] in
-        let d = choose ctx [ (fun () -> "0"); tick Int; (fun () -> [%string "(ticks := !ticks + \
-                                                                             %{int_in ctx 1 99#Int}; 0)"]) ] in
+        (* -unsafe drops the zero check unless the divisor is a literal *)
+        let d = choose ctx [ (fun () -> "0"); (fun () -> [%string "(ticks := !ticks + \
+                                                               %{int_in ctx 1 99#Int}; %{nonzero ctx})"]) ] in
         let n = choose ctx [ (fun () -> "0"); tick Int ] in
         [%string "(try %{n} %{op} %{d} with Division_by_zero -> %{e env Int})"])
     ]
@@ -328,8 +329,8 @@ let effectful ctx env ty e =
     [ (fun () -> [%string "(Int64.mul %{tick Int64 ()} 0L)"])
     ; (fun () ->
         let f = pick ctx [ "Int64.div"; "Int64.rem" ] in
-        let d = choose ctx [ (fun () -> "0L"); tick Int64; (fun () -> [%string "(ticks := !ticks + \
-                                                                                %{int_in ctx 1 99#Int}; 0L)"]) ] in
+        let d = choose ctx [ (fun () -> "0L"); (fun () -> let k = Literal.int64_lit (nonzero64 ctx) in [%string "(ticks := !ticks + \
+                                                                                %{int_in ctx 1 99#Int}; %{k})"]) ] in
         [%string "(try %{f} %{tick Int64 ()} %{d} with Division_by_zero -> %{e env Int64})"])
     ]
   | _ -> []
