@@ -238,10 +238,35 @@ let specific ctx env ty e =
           a)
     ]
     @ (match t with
-       | Arr _ ->
+       | Arr s ->
          [ (fun () ->
              let i = fresh ctx "i" in
              p "(Array.init %s (fun (%s : int) -> %s))" (n ()) i (e (bind (closure env) i Int) t))
+         ; (fun () ->
+             (* each element of a 2D array, set in nested loops *)
+             let a = fresh ctx "a" in
+             let r = fresh ctx "r" in
+             let i = fresh ctx "i" in
+             let j = fresh ctx "j" in
+             let env' = bind (bind (bind env i Int) j Int) (p "(array_get %s %s)" r j) s in
+             p
+               "(let %s = Array.init %s (fun _ -> array_make %s %s) in for %s = 0 to array_length %s - 1 do \
+                let %s = array_get %s %s in for %s = 0 to array_length %s - 1 do array_set %s %s %s done done; %s)"
+               a
+               (n ())
+               (n ())
+               (e (closure env) s)
+               i
+               a
+               r
+               a
+               i
+               j
+               r
+               r
+               j
+               (e env' s)
+               a)
          ]
        | _ -> [])
     (* The compiler picks how to store an array from its element type, so these
