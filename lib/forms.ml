@@ -1,4 +1,3 @@
-open Hegel
 open Ty
 open Ctx
 open Gen_ty
@@ -310,7 +309,7 @@ let nonzero ctx =
     ; (fun () -> "max_int")
     ; (fun () -> "min_int")
     ; (fun () ->
-        let n = draw_silent ctx.tc (integers ()) in
+        let n = Trace.unbounded ctx.tc in
         paren (string_of_int (if n = 0 then 3 else n)))
     ]
 ;;

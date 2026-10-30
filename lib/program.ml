@@ -1,7 +1,6 @@
 (* Generates well-typed OCaml programs that terminate and whose output does
    not depend on evaluation order or on any unspecified behaviour. *)
 
-open Hegel
 open Config
 open Ty
 open Printer
@@ -26,8 +25,7 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
       ~some:(String.split_on_char ',')
       (Sys.getenv_opt "FUZZYCAML_FEATURES")
   in
-  features
-  := List.filter (fun f -> draw_silent tc (booleans ()) || List.mem f forced) all_features;
+  features := List.filter (fun f -> Trace.bool tc || List.mem f forced) all_features;
   use_effect_syntax := effect_syntax;
   mixed := [||];
   urec := [||];
@@ -128,6 +126,31 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
           "let () = %{atomic_op ctx !env g ty e}\n\
            let () = print_endline (%{printer ty} (Atomic.get %{g}))\n"]
   in
+  let binding_ty () =
+    match !poly_parent with
+    | (child, _) :: _ when flip ctx -> Named child
+    | _ -> fo_ty ctx
+  in
+  (* For the lift pass: the type choices of a binding, under this program's
+     features and declarations. *)
+  let state = !features, !mixed, !urec, !poly_parent in
+  (Trace.binding_types
+   := fun target ->
+        let saved = !features, !mixed, !urec, !poly_parent, !ox_mode in
+        let f, m, u, pp = state in
+        features := f;
+        mixed := m;
+        urec := u;
+        poly_parent := pp;
+        ox_mode := ox;
+        let r = Trace.search binding_ty target in
+        let f, m, u, pp, o = saved in
+        features := f;
+        mixed := m;
+        urec := u;
+        poly_parent := pp;
+        ox_mode := o;
+        r);
   let boundary = ref (not (on "modules")) in
   ignore
   @@ repeat ctx 1 6 (fun _ ->
@@ -136,17 +159,16 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
       boundary := true;
       Buffer.add_string buf module_boundary);
     if flip ~p:0.4 ctx then statement ();
-    let ty =
-      match !poly_parent with
-      | (child, _) :: _ when flip ctx -> Named child
-      | _ -> fo_ty ctx
-    in
+    let ty_start = !Trace.count in
+    let ty = binding_ty () in
+    let start = !Trace.count in
+    let rhs = expr ctx !env ty depth in
+    Trace.bindings := (ty_start, start, !Trace.count, ty) :: !Trace.bindings;
     let v = fresh ctx "v" in
     Buffer.add_string
       buf
       [%string
-        "let %{v} : %{ty#Ty} = %{expr ctx !env ty depth}\n\
-         let () = print_endline (%{printer ty} %{v})\n"];
+        "let %{v} : %{ty#Ty} = %{rhs}\nlet () = print_endline (%{printer ty} %{v})\n"];
     env := bind !env v ty);
   let conversions =
     String.concat

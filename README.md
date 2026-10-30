@@ -110,7 +110,7 @@ For each program, in order:
 4. A backend was killed by a signal or raised an uncaught exception other than `Exit`: failure.
 5. Backends differ in compile result, exit status, or output: failure.
 
-During shrinking, only the reference and the first disagreeing backend are run. The report shows the shrunk program, the backends grouped by result, and a `failure_blobs` line that reproduces it. At the end, the fuzzer prints how many programs it ran, timed out, and matched known bugs.
+During shrinking, only the reference and the first disagreeing backend are run. After Hegel's shrinking, the fuzzer tries replacing each top-level binding with an expression of another type inside it, which Hegel cannot do. The report shows the shrunk program, the backends grouped by result, and a `failure_blobs` line that reproduces it. At the end, the fuzzer prints how many programs it ran, timed out, and matched known bugs.
 
 ## Known bugs
 `known_bug` recognises these by behaviour, using the backends that disagree with the reference:

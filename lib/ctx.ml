@@ -14,9 +14,9 @@ let fresh ctx prefix =
   [%string "%{prefix}%{ctx.next#Int}"]
 ;;
 
-let int_in ctx lo hi = draw_silent ctx.tc (integers ~min_value:lo ~max_value:hi ())
-let flip ?p ctx = draw_silent ctx.tc (booleans ?p ())
-let pick ctx l = draw_silent ctx.tc (sampled_from l)
+let int_in ctx lo hi = Trace.int ctx.tc lo hi
+let flip ?p ctx = Trace.bool ?p ctx.tc
+let pick ctx l = List.nth l (Trace.index ctx.tc (List.length l))
 let choose ctx options = pick ctx options ()
 
 (* The declarations with their indices. *)
@@ -31,9 +31,19 @@ let paren s = if String.length s > 0 && s.[0] = '-' then [%string "(%{s})"] else
 
 (* Spans with the same name are what the shrinker swaps for one another, so
    expressions are named by their type. *)
-let span ?(name = "fuzzycaml.repeat") ctx f =
-  let label = Generators.Ppx_internal.Labels.from_name name in
-  draw_silent ctx.tc (Generators.Ppx_internal.composite_with_label ~label (fun _ -> f ()))
+let span ?(name = "fuzzycaml.repeat") ?ty ctx f =
+  if Option.is_some !Trace.script
+  then f ()
+  else (
+    let label = Generators.Ppx_internal.Labels.from_name name in
+    let start = !Trace.count in
+    let v =
+      draw_silent
+        ctx.tc
+        (Generators.Ppx_internal.composite_with_label ~label (fun _ -> f ()))
+    in
+    Option.iter (fun t -> Trace.exprs := (start, !Trace.count, t) :: !Trace.exprs) ty;
+    v)
 ;;
 
 (* Between lo and hi elements. Each one past lo is behind a continue bit and in

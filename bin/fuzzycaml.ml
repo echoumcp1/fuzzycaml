@@ -43,5 +43,12 @@ let () =
         !known);
     let effect_syntax = effect_syntax ~ox backends in
     Printf.printf "effect syntax: %b\n%!" effect_syntax;
-    run_hegel_test ~settings ~database_key:"fuzzycaml" (check ~ox ~effect_syntax backends))
+    let run ?failure_blobs () =
+      run_hegel_test
+        ~settings
+        ~database_key:"fuzzycaml"
+        ?failure_blobs
+        (check ~ox ~effect_syntax backends)
+    in
+    Lift.run ~generate:(fun tc -> ignore (generate ~ox ~effect_syntax backends tc)) run)
 ;;

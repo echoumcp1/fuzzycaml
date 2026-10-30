@@ -23,15 +23,21 @@ let fail backends results msg =
   failwith text
 ;;
 
-let check ~ox ~effect_syntax backends tc =
+(* All of a test case's draws: the toggled flags, then the program. *)
+let generate ~ox ~effect_syntax backends tc =
+  let backends = if ox then with_toggles tc backends else backends in
+  backends, Program.program ~ox ~effect_syntax tc
+;;
+
+let check_case ~size ~ox ~effect_syntax backends tc =
   let backends =
     match !focus with
     | None -> backends
     | Some keep -> List.filteri (fun i _ -> List.mem i keep) backends
   in
-  let backends = if ox then with_toggles tc backends else backends in
   incr cases;
-  let source = Program.program ~ox ~effect_syntax tc in
+  let backends, source = generate ~ox ~effect_syntax backends tc in
+  size := String.length source;
   note tc source;
   (* -dcmm-invariants rejects calls that return unboxed tuples or records. *)
   let backends =
@@ -100,4 +106,15 @@ let check ~ox ~effect_syntax backends tc =
   match List.map observable results with
   | first :: rest when List.for_all (( = ) first) rest -> ()
   | _ -> fail backends results "backends disagree\n"
+;;
+
+(* Records the choices of each test case, and keeps those of a failing one for
+   the lift pass. *)
+let check ~ox ~effect_syntax backends tc =
+  Trace.reset ();
+  let size = ref 0 in
+  try check_case ~size ~ox ~effect_syntax backends tc with
+  | Failure _ as e ->
+    Trace.save !size;
+    raise e
 ;;

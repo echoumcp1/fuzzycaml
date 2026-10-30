@@ -15,7 +15,7 @@ let int_literal ctx =
     ; (fun () ->
         let k = int_in ctx 0 61 in
         paren (string_of_int ((1 lsl k) + int_in ctx (-1) 1)))
-    ; (fun () -> paren (string_of_int (draw_silent ctx.tc (integers ()))))
+    ; (fun () -> paren (string_of_int (Trace.unbounded ctx.tc)))
     ]
 ;;
 
@@ -36,7 +36,7 @@ let rec float_literal ctx =
     ; (fun () -> "0x0.0000000000001p-1022")
     ; (fun () ->
         paren
-          (p "%h" (draw_silent ctx.tc (floats ~allow_nan:false ~allow_infinity:false ()))))
+          (p "%h" (Trace.float ctx.tc (floats ~allow_nan:false ~allow_infinity:false ()))))
     ; (fun () -> [%string "(Int64.float_of_bits %{float_bits ctx})"])
     ]
 
@@ -92,7 +92,7 @@ let num_literal ctx t =
       ; (fun () -> hi)
       ; (fun () -> Int64.shift_left 1L (int_in ctx 0 (w - 2)))
       ; (fun () ->
-          let x = Int64.of_int (draw_silent ctx.tc (integers ())) in
+          let x = Int64.of_int (Trace.unbounded ctx.tc) in
           if w = 64 then x else Int64.rem x (Int64.shift_left 1L (w - 1)))
       ]
   in
@@ -148,7 +148,7 @@ let int64_literal ctx =
     ; (fun () ->
         int64_lit
           (Int64.logor
-             (Int64.shift_left (Int64.of_int (draw_silent ctx.tc (integers ()))) 1)
+             (Int64.shift_left (Int64.of_int (Trace.unbounded ctx.tc)) 1)
              (Int64.of_int (int_in ctx 0 1))))
     ]
 ;;

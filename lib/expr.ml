@@ -11,6 +11,7 @@ open Generic
 let rec expr ctx env ty depth =
   span
     ~name:("fuzzycaml.expr " ^ show_ty ty)
+    ~ty
     ctx
     (fun () ->
        let e env t = expr ctx env t (depth - 1) in
