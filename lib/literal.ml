@@ -189,30 +189,17 @@ let rec literal ctx ty =
   | UTuple ts -> [%string {|#(%{String.concat ", " (List.map (literal ctx) ts)})|}]
   | Or_null t -> if flip ctx then [%string "(This %{literal ctx t})"] else "Null"
   | Arr t ->
-    p
-      "[| %s |]"
-      (String.concat "; " (List.init (int_in ctx 1 3) (fun _ -> literal ctx t)))
+    let elems =
+      String.concat "; " (List.init (int_in ctx 1 3) (fun _ -> literal ctx t))
+    in
+    [%string "[| %{elems} |]"]
   | Named i ->
     (match ctx.decls.(i) with
-     | Record fields ->
-       p
-         "{ %s }"
-         (String.concat
-            "; "
-            (List.map
-               (fun (field, field_ty, _) ->
-                  [%string "%{field} = %{literal ctx field_ty}"])
-               fields))
+     | Record fields -> [%string "{ %{field_values (literal ctx) (field_types fields)} }"]
      | Variant constrs ->
        let c, args = pick ctx constrs in
        construct c (List.map (literal ctx) args)
-     | URecord fields ->
-       let fields =
-         String.concat
-           "; "
-           (List.map (fun (f, t) -> [%string "%{f} = %{literal ctx t}"]) fields)
-       in
-       [%string "#{ %{fields} }"])
+     | URecord fields -> [%string "#{ %{field_values (literal ctx) fields} }"])
 
 and construct c = function
   | [] -> c
@@ -229,13 +216,7 @@ let rec raise_at ctx ty =
   | Or_null _ -> "(This (raise Exit))"
   | Named i ->
     (match ctx.decls.(i) with
-     | URecord fields ->
-       let fields =
-         String.concat
-           "; "
-           (List.map (fun (f, t) -> [%string "%{f} = %{raise_at ctx t}"]) fields)
-       in
-       [%string "#{ %{fields} }"]
+     | URecord fields -> [%string "#{ %{field_values (raise_at ctx) fields} }"]
      | _ -> "(raise Exit)")
   | _ -> "(raise Exit)"
 ;;

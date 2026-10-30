@@ -24,18 +24,13 @@ let pressure ctx env ty e =
     | [] -> zero
     | xs -> String.concat op (List.map fst xs)
   in
-  p
-    "(%s let %s = (Sys.opaque_identity succ) %s in if %s = %s || %s > float_of_int %s \
-     then %s else %s)"
-    (lets e env vars)
-    k
-    (e env Int)
-    (sum Int " + " "0")
-    k
-    (sum Float " +. " "0.")
-    k
-    (e env' ty)
-    (e env' ty)
+  let ints = sum Int " + " "0" in
+  let floats = sum Float " +. " "0." in
+  let else_ = e env' ty in
+  let then_ = e env' ty in
+  [%string
+    "(%{lets e env vars} let %{k} = (Sys.opaque_identity succ) %{e env Int} in if \
+     %{ints} = %{k} || %{floats} > float_of_int %{k} then %{then_} else %{else_})"]
 ;;
 
 (* More int and float parameters than arm64 passes in registers, in a
@@ -66,24 +61,19 @@ let many_args ctx env ty e =
   let m = fresh ctx "m" in
   let outer_lets, outer = args env m in
   let inner_lets, again = args inner [%string "(%{n} - 1)"] in
-  p
-    "(let%s rec %s (%s : int) %s : %s = if %s <= 0 then %s else (%s%s %s) in let %s = %s \
-     land 7 in %s%s %s)"
-    (pick ctx [ ""; "[@inline never]" ])
-    go
-    n
-    (String.concat " " (List.map (fun (x, t) -> [%string "(%{x} : %{t#Ty})"]) params))
-    (show_ty ty)
-    n
-    (e inner ty)
-    inner_lets
-    go
-    again
-    m
-    (e env Int)
-    outer_lets
-    (choose ctx [ (fun () -> go); (fun () -> [%string "(%{go} [@inlined never])"]) ])
-    outer
+  let head =
+    choose ctx [ (fun () -> go); (fun () -> [%string "(%{go} [@inlined never])"]) ]
+  in
+  let count = e env Int in
+  let base = e inner ty in
+  let attr = pick ctx [ ""; "[@inline never]" ] in
+  let decls =
+    String.concat " " (List.map (fun (x, t) -> [%string "(%{x} : %{t#Ty})"]) params)
+  in
+  [%string
+    "(let%{attr} rec %{go} (%{n} : int) %{decls} : %{ty#Ty} = if %{n} <= 0 then %{base} \
+     else (%{inner_lets}%{go} %{again}) in let %{m} = %{count} land 7 in \
+     %{outer_lets}%{head} %{outer})"]
 ;;
 
 (* Fresh allocations live across a collection and are used afterward, so the GC
@@ -97,7 +87,7 @@ let gc ctx env ty e =
 ;;
 
 (* A string read at an offset inside the string's padding. *)
-let str_load ctx env e ty =
+let str_load ctx env ty e =
   let s = fresh ctx "s" in
   let off = [%string "((%{e env Int} land max_int) mod (String.length %{s} + 1))"] in
   let padded = [%string "(%{s} ^ \"\\001\\002\\003\\004\\005\\006\\007\\008\")"] in

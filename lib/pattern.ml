@@ -142,7 +142,7 @@ let rec pattern ?(top = false) ctx ty depth ~binds =
                     (List.map
                        (fun (field, (pat, _)) -> [%string "%{field} = %{pat}; "])
                        parts))
-             , List.concat_map (fun (_, (_, binds)) -> binds) parts ))
+             , List.concat_map (fun (_, (_, bound)) -> bound) parts ))
          ]
        | Variant constrs ->
          List.map
@@ -171,9 +171,7 @@ let rec pattern ?(top = false) ctx ty depth ~binds =
         ]
       else []
   in
-  if depth <= 0
-  then choose ctx [ (fun () -> none "_"); var ]
-  else if structural <> [] && (top || flip ~p:0.75 ctx)
+  if depth > 0 && structural <> [] && (top || flip ~p:0.75 ctx)
   then choose ctx (structural @ combined)
   else choose ctx [ (fun () -> none "_"); var ]
 ;;

@@ -105,9 +105,8 @@ let atomic_op ctx env a ty e =
   (* keeps the old value live, so it may be spilled *)
   let keep_old op v =
     let o = fresh ctx "old" in
-    [%string
-      "(let %{o} = %{op} %{a} %{v} in ignore (Sys.opaque_identity %{e (bind env o ty) \
-       ty}))"]
+    let use_old = e (bind env o ty) ty in
+    [%string "(let %{o} = %{op} %{a} %{v} in ignore (Sys.opaque_identity %{use_old}))"]
   in
   choose
     ctx
@@ -159,32 +158,17 @@ let local_exn ctx env ty e =
   let cv = fresh ctx "c" in
   let s = fo_env_ty ctx env in
   let env = closure env in
-  p
-    "(let exception %s of %s in let%s %s (%s : bool) (%s : %s) : %s = if %s then %s (%s \
-     %s) else %s in let %s = %s in let %s = %s in try %s %s %s with %s %s -> %s)"
-    x
-    (show_ty s)
-    (pick ctx [ ""; "[@inline never]" ])
-    th
-    b
-    v
-    (show_ty s)
-    (show_ty ty)
-    b
-    (pick ctx [ "raise"; "raise_notrace" ])
-    x
-    v
-    (e (bind (bind env b Bool) v s) ty)
-    cb
-    (e env Bool)
-    cv
-    (e env s)
-    th
-    cb
-    cv
-    x
-    v
-    (e (bind env v s) ty)
+  let handler = e (bind env v s) ty in
+  let arg = e env s in
+  let cond = e env Bool in
+  let no_raise = e (bind (bind env b Bool) v s) ty in
+  let raise = pick ctx [ "raise"; "raise_notrace" ] in
+  let attr = pick ctx [ ""; "[@inline never]" ] in
+  [%string
+    "(let exception %{x} of %{s#Ty} in let%{attr} %{th} (%{b} : bool) (%{v} : %{s#Ty}) : \
+     %{ty#Ty} = if %{b} then %{raise} (%{x} %{v}) else %{no_raise} in let %{cb} = \
+     %{cond} in let %{cv} = %{arg} in try %{th} %{cb} %{cv} with %{x} %{v} -> \
+     %{handler})"]
 ;;
 
 let lazy_value ctx env ty e =

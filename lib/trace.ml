@@ -52,32 +52,33 @@ let next kind =
   | None -> assert false
 ;;
 
+(* A tolerant draw during a tolerant replay, and an engine draw otherwise. Either way
+   the value is recorded. *)
+let recorded ~fit ~default ~choice engine =
+  let v = if Option.is_some !tolerant then take fit default else engine () in
+  record (choice v);
+  v
+;;
+
 let int tc lo hi =
   if Option.is_some !script
   then (
     match next (`Int (lo, hi)) with
     | I v -> v
     | _ -> raise (Exhausted (`Int (lo, hi))))
-  else (
-    let v =
-      if Option.is_some !tolerant
-      then
-        take
-          (function
-            | I v -> Some (max lo (min hi v))
-            | _ -> None)
-          lo
-      else draw_silent tc (integers ~min_value:lo ~max_value:hi ())
-    in
-    record (I v);
-    v)
+  else
+    recorded
+      ~fit:(function
+        | I v -> Some (max lo (min hi v))
+        | _ -> None)
+      ~default:lo
+      ~choice:(fun v -> I v)
+      (fun () -> draw_silent tc (integers ~min_value:lo ~max_value:hi ()))
 ;;
 
 (* Drawn as [sampled_from] draws it, so the choice matches the engine. *)
 let index tc n =
-  if Option.is_some !script
-  then int tc 0 (n - 1)
-  else if Option.is_some !tolerant
+  if Option.is_some !script || Option.is_some !tolerant
   then int tc 0 (n - 1)
   else (
     let v = draw_silent tc (sampled_from (List.init n Fun.id)) in
@@ -91,50 +92,35 @@ let bool ?p tc =
     match next `Bool with
     | B b -> b
     | _ -> raise (Exhausted `Bool))
-  else (
-    let v =
-      if Option.is_some !tolerant
-      then
-        take
-          (function
-            | B b -> Some b
-            | _ -> None)
-          false
-      else draw_silent tc (booleans ?p ())
-    in
-    record (B v);
-    v)
+  else
+    recorded
+      ~fit:(function
+        | B b -> Some b
+        | _ -> None)
+      ~default:false
+      ~choice:(fun b -> B b)
+      (fun () -> draw_silent tc (booleans ?p ()))
 ;;
 
 let unbounded tc =
-  let v =
-    if Option.is_some !tolerant
-    then
-      take
-        (function
-          | I v -> Some v
-          | _ -> None)
-        0
-    else draw_silent tc (integers ())
-  in
-  record (I v);
-  v
+  recorded
+    ~fit:(function
+      | I v -> Some v
+      | _ -> None)
+    ~default:0
+    ~choice:(fun v -> I v)
+    (fun () -> draw_silent tc (integers ()))
 ;;
 
 (* g must not allow NaN or infinities, as the tolerant default is 0. *)
 let float tc g =
-  let v =
-    if Option.is_some !tolerant
-    then
-      take
-        (function
-          | F v when Float.is_finite v -> Some v
-          | _ -> None)
-        0.
-    else draw_silent tc g
-  in
-  record (F v);
-  v
+  recorded
+    ~fit:(function
+      | F v when Float.is_finite v -> Some v
+      | _ -> None)
+    ~default:0.
+    ~choice:(fun v -> F v)
+    (fun () -> draw_silent tc g)
 ;;
 
 let search f target =

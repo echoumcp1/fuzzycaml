@@ -14,7 +14,7 @@ let focus = ref None
 
 let fail backends results msg =
   let text = msg ^ report backends results in
-  if !focus = None
+  if Option.is_none !focus
   then (
     prerr_endline text;
     let reference = observable (List.hd results) in

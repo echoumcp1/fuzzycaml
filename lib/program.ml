@@ -90,16 +90,16 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   then
     ctx.effects
     <- repeat ctx 1 3 (fun _ ->
-         let c = fresh ctx "E" in
+         let con = fresh ctx "E" in
          let base () =
            choose ctx [ (fun () -> Int); (fun () -> Bool); (fun () -> fo_ty ctx) ]
          in
-         let a = base () in
-         let r = base () in
+         let arg = base () in
+         let result = base () in
          Buffer.add_string
            buf
-           [%string "type _ Effect.t += %{c} : %{a#Ty} -> %{r#Ty} Effect.t\n"];
-         c, a, r);
+           [%string "type _ Effect.t += %{con} : %{arg#Ty} -> %{result#Ty} Effect.t\n"];
+         con, arg, result);
   let env =
     ref { vars = []; locals = []; in_try = false; effs = []; muts = []; in_fun = false }
   in
@@ -132,24 +132,24 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     | (child, _) :: _ when flip ctx -> Named child
     | _ -> fo_ty ctx
   in
-  let state = !features, !mixed, !urec, !poly_parent in
+  (* The lift searches for a binding's type after the program is generated, so it
+     runs with this program's global state and then puts back whatever was there. *)
+  let snapshot () = !features, !mixed, !urec, !poly_parent, !ox_mode in
+  let restore (f, m, u, pp, o) =
+    features := f;
+    mixed := m;
+    urec := u;
+    poly_parent := pp;
+    ox_mode := o
+  in
+  let state = snapshot () in
   (Trace.binding_types
    := fun target ->
-        let saved = !features, !mixed, !urec, !poly_parent, !ox_mode in
-        let f, m, u, pp = state in
-        features := f;
-        mixed := m;
-        urec := u;
-        poly_parent := pp;
-        ox_mode := ox;
-        let r = Trace.search binding_ty target in
-        let f, m, u, pp, o = saved in
-        features := f;
-        mixed := m;
-        urec := u;
-        poly_parent := pp;
-        ox_mode := o;
-        r);
+        let saved = snapshot () in
+        restore state;
+        Fun.protect
+          ~finally:(fun () -> restore saved)
+          (fun () -> Trace.search binding_ty target));
   let boundary = ref (not (on "modules")) in
   ignore
   @@ repeat ctx 1 6 (fun _ ->

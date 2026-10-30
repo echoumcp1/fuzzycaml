@@ -21,16 +21,7 @@ let local_binding ctx env ty e =
     | Named i ->
       (match ctx.decls.(i) with
        | Record fields ->
-         Some
-           (fun () ->
-             p
-               "{ %s }"
-               (String.concat
-                  "; "
-                  (List.map
-                     (fun (field, field_ty, _) ->
-                        [%string "%{field} = %{e env field_ty}"])
-                     fields)))
+         Some (fun () -> [%string "{ %{field_values (e env) (field_types fields)} }"])
        | Variant constrs ->
          (match List.filter (fun (_, args) -> args <> []) constrs with
           | [] -> None
@@ -89,9 +80,10 @@ let ox_forms ctx env ty e =
                | _ -> None)
            in
            let x = fresh ctx "x" in
+           let this = e (bind env x s) ty in
            [%string
-             "(match %{e env (Or_null s)} with Null -> %{e env ty} | This %{x} -> %{e \
-              (bind env x s) ty})"])
+             "(match %{e env (Or_null s)} with Null -> %{e env ty} | This %{x} -> \
+              %{this})"])
        ]
      else [])
   @
@@ -114,16 +106,18 @@ let ox_forms ctx env ty e =
   else []
 ;;
 
+(* A number of another type, converted to [t]. *)
+let converted ctx env t e () =
+  let s = pick ctx ([ Int; Int64; Float ] @ newer_nums) in
+  convert s t (e env s)
+;;
+
 let num_ops ctx env t e =
   let m = num_module t in
   let call f args () =
     [%string {|(%{m}.%{f} %{String.concat " " (List.map (e env) args)})|}]
   in
-  let from () =
-    let s = pick ctx ([ Int; Int64; Float ] @ newer_nums) in
-    convert s t (e env s)
-  in
-  from
+  converted ctx env t e
   ::
   (if is_float t
    then

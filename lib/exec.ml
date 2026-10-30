@@ -56,13 +56,19 @@ let show_exit = function
   | Timeout -> "timeout"
 ;;
 
+(* Whether [sub] occurs in [s] at [i]. *)
+let occurs_at s i sub =
+  let n = String.length sub in
+  let rec go j = j = n || (s.[i + j] = sub.[j] && go (j + 1)) in
+  i + n <= String.length s && go 0
+;;
+
 let strip ~prefix s =
-  let n = String.length prefix in
   let b = Buffer.create (String.length s) in
   let i = ref 0 in
   while !i < String.length s do
-    if !i + n <= String.length s && String.sub s !i n = prefix
-    then i := !i + n
+    if occurs_at s !i prefix
+    then i := !i + String.length prefix
     else (
       Buffer.add_char b s.[!i];
       incr i)
@@ -75,11 +81,10 @@ type result =
   | Ran of exit * string * string
 
 let find s sub =
-  let n = String.length sub in
   let rec go i =
-    if i + n > String.length s
+    if i + String.length sub > String.length s
     then None
-    else if String.sub s i n = sub
+    else if occurs_at s i sub
     then Some i
     else go (i + 1)
   in

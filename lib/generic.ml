@@ -61,9 +61,8 @@ let generic ctx env ty e =
       let h = fresh ctx "h" in
       let t = fresh ctx "t" in
       let l, local = scrutinee env (List s) in
-      [%string
-        "(match %{l} with [] -> %{e env ty} | %{h} :: %{t} -> %{e (bind_part local \
-         (bind_part local env h s) t (List s)) ty})"])
+      let cons_env = bind_part local (bind_part local env h s) t (List s) in
+      [%string "(match %{l} with [] -> %{e env ty} | %{h} :: %{t} -> %{e cons_env ty})"])
   ; (fun () ->
       let s =
         env_ty ctx env (function
@@ -72,9 +71,8 @@ let generic ctx env ty e =
       in
       let x = fresh ctx "x" in
       let o, local = scrutinee env (Option s) in
-      [%string
-        "(match %{o} with None -> %{e env ty} | Some %{x} -> %{e (bind_part local env x \
-         s) ty})"])
+      let some_env = bind_part local env x s in
+      [%string "(match %{o} with None -> %{e env ty} | Some %{x} -> %{e some_env ty})"])
   ; (fun () ->
       let a, b =
         from_env
@@ -88,27 +86,31 @@ let generic ctx env ty e =
       let x = fresh ctx "x" in
       let y = fresh ctx "y" in
       let v, local = scrutinee env (Pair (a, b)) in
-      [%string
-        "(let (%{x}, %{y}) = %{v} in %{e (bind_part local (bind_part local env x a) y b) \
-         ty})"])
+      let body_env = bind_part local (bind_part local env x a) y b in
+      [%string "(let (%{x}, %{y}) = %{v} in %{e body_env ty})"])
   ; (fun () ->
       let go = fresh ctx "go" in
       let n = fresh ctx "n" in
       let acc = fresh ctx "acc" in
       let env = closure env in
+      let body_env = bind (bind env n Int) acc ty in
       [%string
         "(let%{rec_attr ()} rec %{go} (%{n} : int) (%{acc} : %{ty#Ty}) : %{ty#Ty} = if \
-         %{n} <= 0 then %{acc} else %{go} (%{n} - 1) %{e (bind (bind env n Int) acc ty) \
-         ty} in %{call_attr go} (%{e env Int} land 15) %{e env ty})"])
+         %{n} <= 0 then %{acc} else %{go} (%{n} - 1) %{e body_env ty} in %{call_attr go} \
+         (%{e env Int} land 15) %{e env ty})"])
   ; (fun () ->
       let go = fresh ctx "go" in
       let n = fresh ctx "n" in
       let r = fresh ctx "r" in
       let env = closure env in
+      let count = e env Int in
+      let call = call_attr go in
+      let step = e (bind (bind env n Int) r ty) ty in
+      let base = e (bind env n Int) ty in
       [%string
-        "(let%{rec_attr ()} rec %{go} (%{n} : int) : %{ty#Ty} = if %{n} <= 0 then %{e \
-         (bind env n Int) ty} else (let %{r} : %{ty#Ty} = %{go} (%{n} - 1) in %{e (bind \
-         (bind env n Int) r ty) ty}) in %{call_attr go} (%{e env Int} land 15))"])
+        "(let%{rec_attr ()} rec %{go} (%{n} : int) : %{ty#Ty} = if %{n} <= 0 then \
+         %{base} else (let %{r} : %{ty#Ty} = %{go} (%{n} - 1) in %{step}) in %{call} \
+         (%{count} land 15))"])
   ; (fun () ->
       if on "exits"
       then (
@@ -199,9 +201,12 @@ let generic ctx env ty e =
            let s = env_ty ctx env elem in
            let acc = fresh ctx "acc" in
            let x = fresh ctx "x" in
+           let l = e env (List s) in
+           let init = e env ty in
+           let step = e (bind (bind (closure env) acc ty) x s) ty in
            [%string
-             "(List.fold_left (fun (%{acc} : %{ty#Ty}) (%{x} : %{s#Ty}) -> %{e (bind \
-              (bind (closure env) acc ty) x s) ty}) %{e env ty} %{e env (List s)})"])
+             "(List.fold_left (fun (%{acc} : %{ty#Ty}) (%{x} : %{s#Ty}) -> %{step}) \
+              %{init} %{l})"])
        ])
   @ List.concat_map
       (fun (i, decl) ->
@@ -224,9 +229,9 @@ let generic ctx env ty e =
              fields
          | URecord fields ->
            List.filter_map
-             (fun (f, t) ->
-                if t = ty
-                then Some (fun () -> [%string "(%{e env (Named i)}).#%{f}"])
+             (fun (field, field_ty) ->
+                if field_ty = ty
+                then Some (fun () -> [%string "(%{e env (Named i)}).#%{field}"])
                 else None)
              fields
          | Variant _ -> [])
@@ -337,22 +342,11 @@ let generic ctx env ty e =
         let k = fresh ctx "k" in
         let lim = fresh ctx "lim" in
         let env' = bind env [%string "!%{r}"] ty in
-        p
-          "(let %s = ref (%s : %s) in let %s = ref 0 in let %s = %s land 7 in while !%s \
-           < %s && %s do %s := %s; incr %s done; !%s)"
-          r
-          (e env ty)
-          (show_ty ty)
-          k
-          lim
-          (e env Int)
-          k
-          lim
-          (e env' Bool)
-          r
-          (e (bind env' [%string "!%{k}"] Int) ty)
-          k
-          r)
+        let step = e (bind env' [%string "!%{k}"] Int) ty in
+        [%string
+          "(let %{r} = ref (%{e env ty} : %{ty#Ty}) in let %{k} = ref 0 in let %{lim} = \
+           %{e env Int} land 7 in while !%{k} < %{lim} && %{e env' Bool} do %{r} := \
+           %{step}; incr %{k} done; !%{r})"])
     ; (fun () ->
         let a = fresh ctx "a" in
         let i = fresh ctx "i" in

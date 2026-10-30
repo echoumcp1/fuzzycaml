@@ -9,9 +9,9 @@ open Stress
 open Forms
 
 let specific ctx env ty e =
-  let bin op t = fun () -> [%string "(%{e env t} %{op} %{e env t})"] in
-  let call f args =
-    fun () -> [%string {|(%{f} %{String.concat " " (List.map (e env) args)})|}]
+  let bin op t () = [%string "(%{e env t} %{op} %{e env t})"] in
+  let call f args () =
+    [%string {|(%{f} %{String.concat " " (List.map (e env) args)})|}]
   in
   match ty with
   | Int ->
@@ -39,12 +39,12 @@ let specific ctx env ty e =
       ; call "String.length" [ Str ]
       ; call "Hashtbl.hash" [ Str ]
       ; (fun () -> [%string "(sgn (String.compare %{e env Str} %{e env Str}))"])
-      ; (fun () -> str_load ctx env e Int)
+      ; (fun () -> str_load ctx env Int e)
       ; call "Char.code" [ Char ]
       ; call "Int64.to_int" [ Int64 ]
       ; (fun () -> [%string "(sgn (Int64.compare %{e env Int64} %{e env Int64}))"])
       ]
-    @ (if !ox_mode && on "numbers" then [ List.hd (num_ops ctx env Int e) ] else [])
+    @ (if !ox_mode && on "numbers" then [ converted ctx env Int e ] else [])
     @
     if on "arrays"
     then [ (fun () -> [%string "(array_length %{e env (Arr (array_elem ctx 1))})"]) ]
@@ -87,13 +87,13 @@ let specific ctx env ty e =
         [ "Float.min"; "Float.max"; "Float.rem" ]
     @ [ call "Float.of_int" [ Int ]; call "Float.fma" [ Float; Float; Float ] ]
     @ (if !ox_mode then [ call "box_float" [ float_u ] ] else [])
-    @ if !ox_mode && on "numbers" then [ List.hd (num_ops ctx env Float e) ] else []
+    @ if !ox_mode && on "numbers" then [ converted ctx env Float e ] else []
   | Char ->
     [ (fun () -> [%string "(Char.chr (%{e env Int} land 255))"])
     ; call "Char.lowercase_ascii" [ Char ]
     ; call "Char.uppercase_ascii" [ Char ]
     ; (fun () -> [%string "(Char.unsafe_chr (Char.code %{e env Char}))"])
-    ; (fun () -> str_load ctx env e Char)
+    ; (fun () -> str_load ctx env Char e)
     ]
   | Int64 ->
     List.map
@@ -113,7 +113,7 @@ let specific ctx env ty e =
         (fun f -> call f [ Int64 ])
         [ "Int64.neg"; "Int64.abs"; "Int64.succ"; "Int64.pred"; "Int64.lognot" ]
     @ [ call "Int64.of_int" [ Int ]
-      ; (fun () -> str_load ctx env e Int64)
+      ; (fun () -> str_load ctx env Int64 e)
       ; (fun () -> [%string "(Int64.div %{e env Int64} %{int64_lit (nonzero64 ctx)})"])
       ; (fun () -> [%string "(Int64.rem %{e env Int64} %{int64_lit (nonzero64 ctx)})"])
       ; (fun () ->
@@ -124,7 +124,7 @@ let specific ctx env ty e =
           in
           [%string "(%{op} %{e env Int64} (%{e env Int} land 63))"])
       ]
-    @ if !ox_mode && on "numbers" then [ List.hd (num_ops ctx env Int64 e) ] else []
+    @ if !ox_mode && on "numbers" then [ converted ctx env Int64 e ] else []
   | Str ->
     [ bin "^" Str
     ; call "ssub" [ Str; Int; Int ]
@@ -138,31 +138,34 @@ let specific ctx env ty e =
     ; (fun () -> [%string "(String.concat %{e env Str} %{e env (List Str)})"])
     ; (fun () ->
         let i = fresh ctx "i" in
-        [%string
-          "(String.init (%{e env Int} land 7) (fun (%{i} : int) -> %{e (bind (closure \
-           env) i Int) Char}))"])
+        let char = e (bind (closure env) i Int) Char in
+        [%string "(String.init (%{e env Int} land 7) (fun (%{i} : int) -> %{char}))"])
     ; (fun () ->
         let c = fresh ctx "c" in
-        [%string
-          "(String.map (fun (%{c} : char) -> %{e (bind (closure env) c Char) Char}) %{e \
-           env Str})"])
+        let s = e env Str in
+        let char = e (bind (closure env) c Char) Char in
+        [%string "(String.map (fun (%{c} : char) -> %{char}) %{s})"])
     ; (fun () ->
         let b = fresh ctx "b" in
         let i = fresh ctx "i" in
         let env' = bind env i Int in
+        let char = e env' Char in
+        let pos = e env' Int in
         [%string
           "(let %{b} = Bytes.of_string %{e env Str} in for %{i} = 0 to (%{e env Int} \
-           land 7) do if Bytes.length %{b} > 0 then Bytes.unsafe_set %{b} ((%{e env' \
-           Int} land max_int) mod Bytes.length %{b}) %{e env' Char} done; \
-           Bytes.to_string %{b})"])
+           land 7) do if Bytes.length %{b} > 0 then Bytes.unsafe_set %{b} ((%{pos} land \
+           max_int) mod Bytes.length %{b}) %{char} done; Bytes.to_string %{b})"])
     ; (fun () ->
         let b = fresh ctx "b" in
         let i = fresh ctx "i" in
         let env' = bind env i Int in
+        let char = e env' Char in
+        let str = e env' Str in
+        let count = e env Int in
         [%string
-          "(let %{b} = Buffer.create (%{e env Int} land 15) in for %{i} = 0 to (%{e env \
-           Int} land 7) do Buffer.add_string %{b} %{e env' Str}; Buffer.add_char %{b} \
-           %{e env' Char} done; Buffer.contents %{b})"])
+          "(let %{b} = Buffer.create (%{e env Int} land 15) in for %{i} = 0 to (%{count} \
+           land 7) do Buffer.add_string %{b} %{str}; Buffer.add_char %{b} %{char} done; \
+           Buffer.contents %{b})"])
     ; (fun () ->
         let s = fresh ctx "s" in
         let b = fresh ctx "b" in
@@ -217,9 +220,8 @@ let specific ctx env ty e =
        | Arr s ->
          [ (fun () ->
              let i = fresh ctx "i" in
-             [%string
-               "(Array.init %{n ()} (fun (%{i} : int) -> %{e (bind (closure env) i Int) \
-                t}))"])
+             let elem = e (bind (closure env) i Int) t in
+             [%string "(Array.init %{n ()} (fun (%{i} : int) -> %{elem}))"])
          ; (fun () ->
              let a = fresh ctx "a" in
              let r = fresh ctx "r" in
@@ -228,11 +230,13 @@ let specific ctx env ty e =
              let env' =
                bind (bind (bind env i Int) j Int) [%string "(array_get %{r} %{j})"] s
              in
+             let cell = e env' s in
+             let init = e (closure env) s in
              [%string
-               "(let %{a} = Array.init %{n ()} (fun _ -> array_make %{n ()} %{e (closure \
-                env) s}) in for %{i} = 0 to array_length %{a} - 1 do let %{r} = \
-                array_get %{a} %{i} in for %{j} = 0 to array_length %{r} - 1 do \
-                array_set %{r} %{j} %{e env' s} done done; %{a})"])
+               "(let %{a} = Array.init %{n ()} (fun _ -> array_make %{n ()} %{init}) in \
+                for %{i} = 0 to array_length %{a} - 1 do let %{r} = array_get %{a} %{i} \
+                in for %{j} = 0 to array_length %{r} - 1 do array_set %{r} %{j} %{cell} \
+                done done; %{a})"])
          ]
        | _ -> [])
     (* The compiler picks how to store an array from its element type, so these
@@ -268,19 +272,18 @@ let specific ctx env ty e =
     ; (fun () ->
         let s = env_ty ctx env elem in
         let x = fresh ctx "x" in
-        [%string
-          "(List.map (fun (%{x} : %{s#Ty}) -> %{e (bind (closure env) x s) t}) %{e env \
-           (List s)})"])
+        let l = e env (List s) in
+        let body = e (bind (closure env) x s) t in
+        [%string "(List.map (fun (%{x} : %{s#Ty}) -> %{body}) %{l})"])
     ; (fun () ->
         let x = fresh ctx "x" in
-        [%string
-          "(List.filter (fun (%{x} : %{t#Ty}) -> %{e (bind (closure env) x t) Bool}) %{e \
-           env ty})"])
+        let l = e env ty in
+        let keep = e (bind (closure env) x t) Bool in
+        [%string "(List.filter (fun (%{x} : %{t#Ty}) -> %{keep}) %{l})"])
     ; (fun () ->
         let i = fresh ctx "i" in
-        [%string
-          "(List.init (%{e env Int} land 7) (fun (%{i} : int) -> %{e (bind (closure env) \
-           i Int) t}))"])
+        let elem = e (bind (closure env) i Int) t in
+        [%string "(List.init (%{e env Int} land 7) (fun (%{i} : int) -> %{elem}))"])
     ]
     @ (if first_order t
        then [ (fun () -> [%string "(List.sort compare %{e env ty})"]) ]
@@ -300,9 +303,9 @@ let specific ctx env ty e =
             | _ -> None)
         in
         let x = fresh ctx "x" in
-        [%string
-          "(Option.map (fun (%{x} : %{s#Ty}) -> %{e (bind (closure env) x s) t}) %{e env \
-           (Option s)})"])
+        let o = e env (Option s) in
+        let body = e (bind (closure env) x s) t in
+        [%string "(Option.map (fun (%{x} : %{s#Ty}) -> %{body}) %{o})"])
     ]
   | Pair (a, b) -> [ (fun () -> [%string "(%{e env a}, %{e env b})"]) ]
   | Arrow (a, b) ->
@@ -313,13 +316,7 @@ let specific ctx env ty e =
   | Named i ->
     (match ctx.decls.(i) with
      | URecord fields ->
-       let build () =
-         String.concat
-           "; "
-           (List.map
-              (fun (field, field_ty) -> [%string "%{field} = %{e env field_ty}"])
-              fields)
-       in
+       let build () = field_values (e env) fields in
        [ (fun () -> [%string "#{ %{build ()} }"])
        ; (fun () ->
            let field, field_ty = pick ctx fields in
@@ -353,13 +350,7 @@ let specific ctx env ty e =
               else [])
            !poly_parent
      | Record fields ->
-       let build () =
-         String.concat
-           "; "
-           (List.map
-              (fun (field, field_ty, _) -> [%string "%{field} = %{e env field_ty}"])
-              fields)
-       in
+       let build () = field_values (e env) (field_types fields) in
        [ (fun () -> [%string "{ %{build ()} }"])
        ; (fun () ->
            let field, field_ty, _ = pick ctx fields in
@@ -373,15 +364,9 @@ let specific ctx env ty e =
                 Some
                   (fun () ->
                     let s = fresh ctx "s" in
-                    p
-                      "(let %s = %s in { %s })"
-                      s
-                      (e env (Named unboxed))
-                      (String.concat
-                         "; "
-                         (List.map
-                            (fun (field, _, _) -> [%string "%{field} = %{s}.#u%{field}"])
-                            fields))))
+                    let copy (field, _, _) = [%string "%{field} = %{s}.#u%{field}"] in
+                    let fields = String.concat "; " (List.map copy fields) in
+                    [%string "(let %{s} = %{e env (Named unboxed)} in { %{fields} })"]))
            !twins
        @
        (* Only a record the expression allocates is mutated, and only before it

@@ -47,6 +47,9 @@ type decl =
   | Variant of (string * ty list) list
   | URecord of (string * ty) list
 
+(* A record's fields without their mutability. *)
+let field_types fields = List.map (fun (field, field_ty, _) -> field, field_ty) fields
+
 let num_name = function
   | Int -> "int"
   | Int64 -> "int64"
