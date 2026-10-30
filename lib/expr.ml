@@ -23,7 +23,8 @@ let rec expr ctx env ty depth =
        let leaf () =
          (* i = 0 is the literal, so shrinking turns variable uses into constants. *)
          let i = int_in ctx 0 (List.length vars) in
-         if unused <> [] && flip ~p:0.7 ctx
+         let prefer_unused = flip ~p:0.7 ctx in
+         if unused <> [] && prefer_unused
          then use (pick ctx unused)
          else if i > 0
          then use (List.nth vars (i - 1))
@@ -35,13 +36,15 @@ let rec expr ctx env ty depth =
            else l)
        in
        let performs = List.filter (fun (_, _, r) -> r = ty) env.effs in
+       (* Drawn whatever the depth and the variables in scope, so moving a
+          subexpression or deleting a binding does not shift later choices.
+          A leaf is false, which the shrinker tries first. *)
+       let leaf_unused = not (flip ~p:0.5 ctx) in
+       let leaf_var = not (flip ~p:0.75 ctx) in
+       let use_other = flip ~p:0.3 ctx in
        if env.in_try && flip ~p:0.15 ctx
        then raise_at ctx ty
-       else if
-         (* negated so that false, which the shrinker tries first, means a leaf *)
-         depth <= 0
-         || (unused <> [] && not (flip ~p:0.5 ctx))
-         || (vars <> [] && not (flip ~p:0.75 ctx))
+       else if depth <= 0 || (unused <> [] && leaf_unused) || (vars <> [] && leaf_var)
        then leaf ()
        else if performs <> [] && flip ~p:0.2 ctx
        then (
@@ -63,7 +66,7 @@ let rec expr ctx env ty depth =
            | Option _ | Pair _ | Arrow _ | Named _ | UTuple _ | Or_null _ -> 0.4
          in
          match other with
-         | (x, t) :: _ when flip ~p:0.3 ctx ->
+         | (x, t) :: _ when use_other ->
            (* use the newest unused variable of another type *)
            [%string
              "(if %{use (x, t)} = %{literal ctx t} then %{e env ty} else %{e env ty})"]
