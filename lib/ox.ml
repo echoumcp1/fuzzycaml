@@ -27,7 +27,10 @@ let local_binding ctx env ty e =
                "{ %s }"
                (String.concat
                   "; "
-                  (List.map (fun (f, t, _) -> [%string "%{f} = %{e env t}"]) fields)))
+                  (List.map
+                     (fun (field, field_ty, _) ->
+                        [%string "%{field} = %{e env field_ty}"])
+                     fields)))
        | Variant constrs ->
          (match List.filter (fun (_, args) -> args <> []) constrs with
           | [] -> None

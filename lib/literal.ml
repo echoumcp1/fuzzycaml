@@ -199,7 +199,10 @@ let rec literal ctx ty =
          "{ %s }"
          (String.concat
             "; "
-            (List.map (fun (f, t, _) -> [%string "%{f} = %{literal ctx t}"]) fields))
+            (List.map
+               (fun (field, field_ty, _) ->
+                  [%string "%{field} = %{literal ctx field_ty}"])
+               fields))
      | Variant constrs ->
        let c, args = pick ctx constrs in
        construct c (List.map (literal ctx) args)

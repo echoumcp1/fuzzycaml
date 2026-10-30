@@ -208,18 +208,18 @@ let generic ctx env ty e =
          match decl with
          | Record fields ->
            List.filter_map
-             (fun (f, t, _) ->
-                if t = ty
+             (fun (field, field_ty, _) ->
+                if field_ty = ty
                 then
                   Some
                     (fun () ->
                       (* A local record's field is local unless it is immediate. *)
                       let r =
-                        if immediate t
+                        if immediate field_ty
                         then fst (scrutinee env (Named i))
                         else e env (Named i)
                       in
-                      [%string "(%{r}).%{f}"])
+                      [%string "(%{r}).%{field}"])
                 else None)
              fields
          | URecord fields ->

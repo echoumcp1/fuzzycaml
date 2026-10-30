@@ -316,26 +316,29 @@ let specific ctx env ty e =
        let build () =
          String.concat
            "; "
-           (List.map (fun (f, t) -> [%string "%{f} = %{e env t}"]) fields)
+           (List.map
+              (fun (field, field_ty) -> [%string "%{field} = %{e env field_ty}"])
+              fields)
        in
        [ (fun () -> [%string "#{ %{build ()} }"])
        ; (fun () ->
-           let f, t = pick ctx fields in
-           [%string "#{ %{e env ty} with %{f} = %{e env t} }"])
+           let field, field_ty = pick ctx fields in
+           [%string "#{ %{e env ty} with %{field} = %{e env field_ty} }"])
        ]
        @ List.filter_map
-           (fun (b, u) ->
-              if u <> i
+           (fun (boxed, unboxed) ->
+              if unboxed <> i
               then None
               else
                 Some
                   (fun () ->
                     let s = fresh ctx "s" in
-                    let copy (f, _) =
-                      [%string "%{f} = %{s}.%{String.sub f 1 (String.length f - 1)}"]
+                    let copy (field, _) =
+                      [%string
+                        "%{field} = %{s}.%{String.sub field 1 (String.length field - 1)}"]
                     in
                     let fields = String.concat "; " (List.map copy fields) in
-                    [%string "(let %{s} = %{e env (Named b)} in #{ %{fields} })"]))
+                    [%string "(let %{s} = %{e env (Named boxed)} in #{ %{fields} })"]))
            !twins
      | Variant constrs ->
        List.map (fun (c, args) () -> construct c (List.map (e env) args)) constrs
@@ -353,16 +356,18 @@ let specific ctx env ty e =
        let build () =
          String.concat
            "; "
-           (List.map (fun (f, t, _) -> [%string "%{f} = %{e env t}"]) fields)
+           (List.map
+              (fun (field, field_ty, _) -> [%string "%{field} = %{e env field_ty}"])
+              fields)
        in
        [ (fun () -> [%string "{ %{build ()} }"])
        ; (fun () ->
-           let f, t, _ = pick ctx fields in
-           [%string "{ %{e env ty} with %{f} = %{e env t} }"])
+           let field, field_ty, _ = pick ctx fields in
+           [%string "{ %{e env ty} with %{field} = %{e env field_ty} }"])
        ]
        @ List.filter_map
-           (fun (b, u) ->
-              if b <> i
+           (fun (boxed, unboxed) ->
+              if boxed <> i
               then None
               else
                 Some
@@ -371,31 +376,32 @@ let specific ctx env ty e =
                     p
                       "(let %s = %s in { %s })"
                       s
-                      (e env (Named u))
+                      (e env (Named unboxed))
                       (String.concat
                          "; "
                          (List.map
-                            (fun (f, _, _) -> [%string "%{f} = %{s}.#u%{f}"])
+                            (fun (field, _, _) -> [%string "%{field} = %{s}.#u%{field}"])
                             fields))))
            !twins
        @
        (* Only a record the expression allocates is mutated, and only before it
           is returned. *)
-       (match List.filter (fun (_, _, m) -> m) fields with
+       (match List.filter (fun (_, _, is_mutable) -> is_mutable) fields with
          | [] -> []
          | mutables ->
            [ (fun () ->
                let r = fresh ctx "r" in
                let i = fresh ctx "i" in
-               let f, t, _ = pick ctx mutables in
+               let field, field_ty, _ = pick ctx mutables in
                let env' =
                  List.fold_left
-                   (fun env (g, gt, _) -> bind env [%string "%{r}.%{g}"] gt)
+                   (fun env (other, other_ty, _) ->
+                      bind env [%string "%{r}.%{other}"] other_ty)
                    (bind env i Int)
                    fields
                in
                [%string
                  "(let %{r} = { %{build ()} } in for %{i} = 0 to (%{e env Int} land 7) \
-                  do %{r}.%{f} <- %{e env' t} done; %{r})"])
+                  do %{r}.%{field} <- %{e env' field_ty} done; %{r})"])
            ]))
 ;;

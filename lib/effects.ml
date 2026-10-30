@@ -8,7 +8,7 @@ let handler_setup ctx env =
   let b =
     from_env
       ctx
-      { env with vars = List.map (fun (c, _, r) -> c, r) handled }
+      { env with vars = List.map (fun (con, _, result) -> con, result) handled }
       some_ty
       (fun () -> fo_env_ty ctx env)
   in
@@ -16,12 +16,12 @@ let handler_setup ctx env =
   handled, b, catch, { env with effs = handled @ env.effs; in_try = env.in_try || catch }
 ;;
 
-let arm ctx env ty e ~resume ~discontinue (_, a, r) =
+let arm ctx env ty e ~resume ~discontinue (_, arg, result) =
   let v = fresh ctx "v" in
   let k = fresh ctx "k" in
-  let henv = bind env v a in
+  let henv = bind env v arg in
   let res = fresh ctx "r" in
-  let resumed () = resume k (e henv r) r in
+  let resumed () = resume k (e henv result) result in
   ( v
   , k
   , choose
@@ -44,20 +44,21 @@ let exnc env ty e catch =
   if catch then [%string "(function Exit -> %{e env ty} | ex -> raise ex)"] else "raise"
 ;;
 
-let perform_let ctx env e (c, a, r) ty =
+let perform_let ctx env e (con, arg, result) ty =
   let y = fresh ctx "y" in
   [%string
-    "(let %{y} : %{r#Ty} = Effect.perform (%{c} %{e env a}) in %{e (bind env y r) ty})"]
+    "(let %{y} : %{result#Ty} = Effect.perform (%{con} %{e env arg}) in %{e (bind env y \
+     result) ty})"]
 ;;
 
 let handler ctx env ty e =
   let handled, b, catch, body_env = handler_setup ctx env in
   let x = fresh ctx "x" in
   let exnc = exnc env ty e catch in
-  let arm ((c, _, _) as eff) =
+  let arm ((con, _, _) as eff) =
     let v, k, body = arm ctx env ty e ~resume:deep_resume ~discontinue:true eff in
     [%string
-      "| %{c} %{v} -> Some (fun (%{k} : (a, %{ty#Ty}) Effect.Deep.continuation) -> \
+      "| %{con} %{v} -> Some (fun (%{k} : (a, %{ty#Ty}) Effect.Deep.continuation) -> \
        %{body})"]
   in
   p
@@ -79,11 +80,11 @@ let shallow ctx env ty e =
   let tv = fresh ctx "c" in
   let x = fresh ctx "x" in
   let exnc = exnc env ty e catch in
-  let arm ((c, _, _) as eff) =
+  let arm ((con, _, _) as eff) =
     let resume k v _ = [%string "%{go} %{k} %{v}"] in
     let v, k, body = arm ctx env ty e ~resume ~discontinue:false eff in
     [%string
-      "| %{c} %{v} -> Some (fun (%{k} : (a, %{b#Ty}) Effect.Shallow.continuation) -> \
+      "| %{con} %{v} -> Some (fun (%{k} : (a, %{b#Ty}) Effect.Shallow.continuation) -> \
        %{body})"]
   in
   p
@@ -109,9 +110,9 @@ let shallow ctx env ty e =
 let effect_match ctx env ty e =
   let handled, b, catch, body_env = handler_setup ctx env in
   let x = fresh ctx "x" in
-  let arm ((c, _, _) as eff) =
+  let arm ((con, _, _) as eff) =
     let v, k, body = arm ctx env ty e ~resume:deep_resume ~discontinue:true eff in
-    [%string "| effect %{c} %{v}, %{k} -> %{body}"]
+    [%string "| effect %{con} %{v}, %{k} -> %{body}"]
   in
   p
     "(match %s with | %s -> %s %s%s)"

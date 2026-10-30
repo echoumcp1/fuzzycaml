@@ -38,7 +38,8 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     := Array.append
          !mixed
          [| (match decl with
-             | Record fields -> List.exists (fun (_, t, _) -> has_float_u t) fields
+             | Record fields ->
+               List.exists (fun (_, field_ty, _) -> has_float_u field_ty) fields
              | URecord _ -> true
              | Variant constrs ->
                List.exists (fun (_, args) -> List.exists has_float_u args) constrs)
@@ -68,8 +69,11 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     let i = add decl in
     (match decl with
      | Record fields when urecords && flip ctx ->
-       let u = add (URecord (List.map (fun (f, t, _) -> "u" ^ f, t) fields)) in
-       twins := (i, u) :: !twins
+       let unboxed =
+         add
+           (URecord (List.map (fun (field, field_ty, _) -> "u" ^ field, field_ty) fields))
+       in
+       twins := (i, unboxed) :: !twins
      | _ -> ());
     if urecords && flip ~p:0.3 ctx
     then

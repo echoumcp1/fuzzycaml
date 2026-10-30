@@ -36,7 +36,7 @@ let rec expr ctx env ty depth =
            then [%string "(Sys.opaque_identity %{l})"]
            else l)
        in
-       let performs = List.filter (fun (_, _, r) -> r = ty) env.effs in
+       let performs = List.filter (fun (_, _, result) -> result = ty) env.effs in
        (* Drawn whatever the depth and the variables in scope, so moving a
           subexpression or deleting a binding does not shift later choices.
           A leaf is false, which the shrinker tries first. *)
@@ -49,8 +49,8 @@ let rec expr ctx env ty depth =
        then leaf ()
        else if performs <> [] && flip ~p:0.2 ctx
        then (
-         let c, a, _ = pick ctx performs in
-         [%string "(Effect.perform (%{c} %{e env a}))"])
+         let con, arg, _ = pick ctx performs in
+         [%string "(Effect.perform (%{con} %{e env arg}))"])
        else if env.effs <> [] && flip ~p:0.35 ctx
        then perform_let ctx env e (pick ctx env.effs) ty
        else (

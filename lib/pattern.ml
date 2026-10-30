@@ -132,13 +132,17 @@ let rec pattern ?(top = false) ctx ty depth ~binds =
                | [] -> [ List.hd fields ]
                | picked -> picked
              in
-             let parts = List.map (fun (f, t, _) -> f, sub t) picked in
+             let parts =
+               List.map (fun (field, field_ty, _) -> field, sub field_ty) picked
+             in
              ( p
                  "{ %s_ }"
                  (String.concat
                     ""
-                    (List.map (fun (f, (q, _)) -> [%string "%{f} = %{q}; "]) parts))
-             , List.concat_map (fun (_, (_, b)) -> b) parts ))
+                    (List.map
+                       (fun (field, (pat, _)) -> [%string "%{field} = %{pat}; "])
+                       parts))
+             , List.concat_map (fun (_, (_, binds)) -> binds) parts ))
          ]
        | Variant constrs ->
          List.map

@@ -252,12 +252,13 @@ let lifts s =
   List.concat_map
     (fun (ty_start, start, stop, ty) ->
        List.filter_map
-         (fun (a, b, t) ->
-            if a > start && b <= stop && t <> ty
+         (fun (inner_start, inner_stop, inner_ty) ->
+            if inner_start > start && inner_stop <= stop && inner_ty <> ty
             then
               Option.map
-                (fun tys -> sub 0 ty_start @ tys @ sub a b @ sub stop n)
-                (types t)
+                (fun tys ->
+                   sub 0 ty_start @ tys @ sub inner_start inner_stop @ sub stop n)
+                (types inner_ty)
             else None)
          s.snap_exprs)
     s.snap_bindings

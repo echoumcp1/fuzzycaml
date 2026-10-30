@@ -44,7 +44,7 @@ let partial ctx env ty e =
   let rec args = function
     | [] -> []
     | param :: rest ->
-      let omittable = List.exists (fun (_, _, k, _) -> k = `Pos) rest in
+      let omittable = List.exists (fun (_, _, kind, _) -> kind = `Pos) rest in
       let a = arg ~omittable param in
       Option.to_list a @ args rest
   in
@@ -89,7 +89,7 @@ let partial ctx env ty e =
         [%string "(%{head} %{first})"]
         rest
   in
-  let decls = String.concat " " (List.map (fun (_, _, _, d) -> d) params) in
+  let decls = String.concat " " (List.map (fun (_, _, _, decl) -> decl) params) in
   [%string "(let%{attr} %{f} %{decls} : %{ty#Ty} = %{e body_env ty} in %{call})"]
 ;;
 
