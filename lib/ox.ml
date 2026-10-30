@@ -5,9 +5,7 @@ open Gen_ty
 open Literal
 open Env
 
-(* [let local_ x = ... in body], where the value is ordinary, a [stack_]
-   allocation, or allocated by a helper in the caller's region with [exclave_].
-   The body's type is immediate, so no local escapes. *)
+(* The body's type is immediate, so no local escapes. *)
 let local_binding ctx env ty e =
   let s =
     match any_ty ctx with
@@ -61,8 +59,6 @@ let local_binding ctx env ty e =
   [%string "(let local_ %{x} : %{s#Ty} = %{source} in %{e (bind_local env x s) ty})"]
 ;;
 
-(* OxCaml forms at any type: destructuring an unboxed tuple or an or_null, and
-   a [let mutable] updated in a loop. *)
 let ox_forms ctx env ty e =
   (if on "utuples"
    then
@@ -115,7 +111,6 @@ let ox_forms ctx env ty e =
   else []
 ;;
 
-(* Arithmetic on the newer number types, and conversions into them. *)
 let num_ops ctx env t e =
   let m = num_module t in
   let call f args () =
@@ -163,7 +158,6 @@ let num_ops ctx env t e =
        ])
 ;;
 
-(* Comparing two numbers of one of the newer types, through int64 or float. *)
 let num_compare ctx env e =
   let t = pick ctx newer_nums in
   let hub = if is_float t then Float else Int64 in

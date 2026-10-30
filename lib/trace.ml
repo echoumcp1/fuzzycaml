@@ -1,35 +1,23 @@
 open Hegel
 
-(* The choices a test case draws, as the engine sees them, with the spans of
-   typed expressions and of top-level bindings. The lift pass edits them. *)
-
 type choice =
   | I of int
   | B of bool
   | F of float
 
-(* Choices are kept in reverse. *)
 let choices : choice list ref = ref []
 let count = ref 0
-
-(* (start, stop, type) of each expression span *)
 let exprs : (int * int * Ty.ty) list ref = ref []
-
-(* (type start, expression start, expression stop, type) of each top-level binding *)
 let bindings : (int * int * int * Ty.ty) list ref = ref []
-
-(* Finds the choices that make a top-level binding have a given type. *)
 let binding_types : (Ty.ty -> choice list option) ref = ref (fun _ -> None)
 
-(* With a script, draws read it instead of the engine. [Exhausted] gives the
-   kind of draw that found it empty. *)
 exception Exhausted of [ `Int of int * int | `Bool ]
 
 let script : choice list option ref = ref None
 
-(* With [tolerant] choices, draws take the next one if it fits, clamped to
-   range, and otherwise a default, leaving it for the next draw. What they use
-   is recorded, so the result replays exactly. *)
+(* Tolerant draws take the next choice if it fits and a default otherwise, so a candidate
+   whose context changed still replays. What they use is recorded, so the result replays
+   exactly. *)
 let tolerant : choice list option ref = ref None
 
 let take f default =
@@ -85,7 +73,7 @@ let int tc lo hi =
     v)
 ;;
 
-(* An index into a list of length n, drawn as [sampled_from] draws it. *)
+(* Drawn as [sampled_from] draws it, so the choice matches the engine. *)
 let index tc n =
   if Option.is_some !script
   then int tc 0 (n - 1)
@@ -149,8 +137,6 @@ let float tc g =
   v
 ;;
 
-(* The shortest script for which [f] returns [target], searching breadth
-   first. Bounded ints try their first 16 values. *)
 let search f target =
   let queue = Queue.create () in
   Queue.add [] queue;
@@ -179,7 +165,6 @@ let search f target =
   r
 ;;
 
-(* Failure blobs: base64 of a 0 prefix and the engine's choice encoding. *)
 let base64 s =
   let tbl = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" in
   let b = Buffer.create ((String.length s + 2) / 3 * 4) in
@@ -188,7 +173,6 @@ let base64 s =
   let i = ref 0 in
   while !i < n do
     let x = (byte !i lsl 16) lor (byte (!i + 1) lsl 8) lor byte (!i + 2) in
-    (* 3 bytes give 4 characters; a short last group gives 2 or 3 and padding *)
     let chars = min 4 (n - !i + 1) in
     for k = 0 to 3 do
       Buffer.add_char b (if k < chars then tbl.[(x lsr (18 - (6 * k))) land 63] else '=')
@@ -205,7 +189,6 @@ let blob cs =
   List.iter
     (function
       | I v ->
-        (* two's complement, little-endian, shortest form with a sign bit *)
         let rec len k =
           if k >= 8 || v asr ((8 * k) - 1) = 0 || v asr ((8 * k) - 1) = -1
           then k
@@ -228,13 +211,12 @@ let blob cs =
   base64 (Buffer.contents b)
 ;;
 
-(* The smallest test case that failed. *)
 type snapshot =
   { cs : choice array
   ; snap_exprs : (int * int * Ty.ty) list
   ; snap_bindings : (int * int * int * Ty.ty) list
   ; snap_types : Ty.ty -> choice list option
-  ; size : int (* length of the program *)
+  ; size : int
   }
 
 let last : snapshot option ref = ref None
@@ -255,8 +237,6 @@ let save size =
          }
 ;;
 
-(* Lifting: a top-level binding becomes an expression found inside it, with its
-   type choices changed to that expression's type. Smallest results first. *)
 let lifts s =
   let n = Array.length s.cs in
   let sub a b = Array.to_list (Array.sub s.cs a (b - a)) in

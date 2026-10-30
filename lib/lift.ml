@@ -1,6 +1,18 @@
 (* After Hegel's shrinking, tries lifting an expression out of a top-level
-   binding of another type, which Hegel cannot do since spans are labelled by
-   type. A lift that fails the same way is shrunk again by Hegel. *)
+   binding of another type. Hegel cannot do this: it only replaces a span with
+   a descendant of the same label, and expression spans are labeled by type,
+   since the same choices read at another type give a different expression.
+   The binding's type is drawn before its expression's span, so a lift has to
+   change those choices too. A lift that fails the same way is shrunk again by
+   Hegel. For example,
+
+     let v7 : bool = if (0 lsl 0) = 0 then true else false
+
+   becomes
+
+     let v7 : int = (0 lsl 0)
+
+   if that still fails. *)
 
 let kind = function
   | Failure m -> List.hd (String.split_on_char '\n' m)
@@ -30,7 +42,7 @@ let normalize generate c =
 ;;
 
 (* Each candidate compiles the program again, so a large one can take long. *)
-let seconds = 120.
+let seconds = 300.
 
 let run ~generate (test : ?failure_blobs:string list -> unit -> unit) =
   let deadline = ref infinity in

@@ -3,8 +3,6 @@ open Ctx
 open Gen_ty
 open Env
 
-(* A local function with positional, labelled and optional parameters, applied
-   all at once or in several steps. *)
 let partial ctx env ty e =
   let f = fresh ctx "f" in
   let n = int_in ctx 1 4 in
@@ -50,7 +48,7 @@ let partial ctx env ty e =
       let a = arg ~omittable param in
       Option.to_list a @ args rest
   in
-  (* Labelled arguments commute; positional ones keep their order. *)
+  (* Labeled arguments commute; positional ones keep their order. *)
   let shuffle args =
     let moved, kept =
       List.partition (fun (pos, _) -> (not pos) && flip ~p:0.3 ctx) args
@@ -96,7 +94,8 @@ let partial ctx env ty e =
 ;;
 
 let atomic_op ctx env a ty e =
-  (* let-bound because argument evaluation order is unspecified and differs between ocamlc and ocamlopt *)
+  (* let-bound because argument evaluation order is unspecified and differs between ocamlc
+     and ocamlopt *)
   let cas seen v =
     let x = fresh ctx "c"
     and y = fresh ctx "c" in
@@ -138,8 +137,8 @@ let atomic_op ctx env a ty e =
      | _ -> [])
 ;;
 
-(* A local atomic, updated in a loop and then read. It holds an int or a bool,
-   so compare_and_set's physical equality behaves the same on every backend. *)
+(* Atomics hold an int or a bool, so compare_and_set's physical equality behaves the same
+   on every backend. *)
 let local_atomic ctx env ty e =
   let a = fresh ctx "at" in
   let i = fresh ctx "i" in
@@ -151,8 +150,6 @@ let local_atomic ctx env ty e =
      %{ops} done; Atomic.get %{a})"]
 ;;
 
-(* A local exception carrying a value, raised from a function and caught by
-   its caller. *)
 let local_exn ctx env ty e =
   let x = fresh ctx "X" in
   let th = fresh ctx "th" in
@@ -190,7 +187,6 @@ let local_exn ctx env ty e =
     (e (bind env v s) ty)
 ;;
 
-(* A deferred computation, forced where its value is used. *)
 let lazy_value ctx env ty e =
   let s =
     from_env
@@ -214,8 +210,6 @@ let lazy_value ctx env ty e =
     ]
 ;;
 
-(* Recursive value definitions: a cyclic list, and lazies, tuples and
-   functions that refer to each other. *)
 let rec_value ctx env ty e =
   let f = fresh ctx "f" in
   let n = fresh ctx "n" in
@@ -254,8 +248,6 @@ let rec_value ctx env ty e =
   | _ -> []
 ;;
 
-(* A [@tail_mod_cons] list builder with its recursive call under a constructor.
-   *)
 let tmc ctx env t e =
   let go = fresh ctx "go" in
   let n = fresh ctx "n" in
@@ -314,10 +306,9 @@ let nonzero ctx =
     ]
 ;;
 
-(* Subexpressions that add to the global [ticks], which the program prints last.
-   Additions commute, so the total only changes if a compiler drops or repeats
-   one. Only used outside functions and where nothing else can raise or
-   perform, so evaluation order cannot change the result. *)
+(* Additions to [ticks] commute, so the total only changes if a compiler drops or repeats
+   one. They are only used outside functions and where nothing else can raise or perform,
+   so evaluation order cannot change the result. *)
 let effectful ctx env ty e =
   let tick t () = [%string "(ticks := !ticks + %{int_in ctx 1 99#Int}; %{e env t})"] in
   let value = not (restricted ty) in

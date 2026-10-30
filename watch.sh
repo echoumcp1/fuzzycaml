@@ -1,7 +1,7 @@
 #!/bin/bash
 # usage: ./watch.sh <dir>
 # Waits for a run started by run.sh <dir> to find a failure and prints its log. Stops the
-# run if there are more than 40 logs (workers failing straight away) or free disk drops
+# run if there are more than 40 logs (workers failing right away) or free disk drops
 # below 10GB.
 L=$(cd "$1" && pwd)
 failed() { grep -l "^Exception:" "$L"/w*.log 2>/dev/null; }

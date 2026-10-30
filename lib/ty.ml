@@ -43,7 +43,7 @@ let float_u = U UF
 (* Declared types refer only to earlier ones and hold only first-order
    values. *)
 type decl =
-  | Record of (string * ty * bool) list (* name, type, mutable *)
+  | Record of (string * ty * bool) list
   | Variant of (string * ty list) list
   | URecord of (string * ty) list
 
@@ -85,7 +85,6 @@ let width = function
   | _ -> 64
 ;;
 
-(* The module with each number type's arithmetic, aliased in the prelude. *)
 let num_module = function
   | Int -> "Int"
   | Int64 -> "Int64"
@@ -122,9 +121,7 @@ let all_nb = [ I8; I16; I32; Nat; F32 ]
 let all_ub = [ UF; UF32; UI; UI8; UI16; UI32; UI64; UNat ]
 let newer_nums = List.map (fun n -> Num n) all_nb @ List.map (fun u -> U u) all_ub
 
-(* Number conversions are externals, declared at the top of the program as they
-   are used. Float-to-integer conversions saturate, since out-of-range results
-   are unspecified. *)
+(* Float-to-integer conversions saturate, since out-of-range results are unspecified. *)
 let convs = ref []
 
 let conv_ext a b =
@@ -180,8 +177,6 @@ let rec first_order = function
   | Arrow _ -> false
 ;;
 
-(* Whether a value of the type can only be bound, passed, returned, or held
-   by an unboxed tuple or record or a record field. *)
 let restricted = function
   | U _ | UTuple _ | Or_null _ -> true
   | Named i -> !urec.(i)

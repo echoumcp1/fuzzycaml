@@ -2,8 +2,6 @@ open Ty
 open Ctx
 open Env
 
-(* The effects a handler handles, the type [b] of its body, whether it
-   catches Exit, and the body's environment. *)
 let handler_setup ctx env =
   let handled = List.filter (fun _ -> flip ctx) ctx.effects in
   let handled = if handled = [] then [ List.hd ctx.effects ] else handled in
@@ -18,9 +16,6 @@ let handler_setup ctx env =
   handled, b, catch, { env with effs = handled @ env.effs; in_try = env.in_try || catch }
 ;;
 
-(* A handler arm for an effect with argument [a] and result [r]. It resumes the
-   body, resumes it and uses the result, drops the continuation, or (inside a
-   try, if [discontinue]) raises Exit at the perform. *)
 let arm ctx env ty e ~resume ~discontinue (_, a, r) =
   let v = fresh ctx "v" in
   let k = fresh ctx "k" in
@@ -45,20 +40,16 @@ let arm ctx env ty e ~resume ~discontinue (_, a, r) =
 
 let deep_resume k v r = [%string "Effect.Deep.continue %{k} (%{v} : %{r#Ty})"]
 
-(* A handler's exnc: it catches Exit if [catch]. *)
 let exnc env ty e catch =
   if catch then [%string "(function Exit -> %{e env ty} | ex -> raise ex)"] else "raise"
 ;;
 
-(* Performs [c] with an argument of type [a] and binds its result of type [r]
-   in a body of type [ty]. *)
 let perform_let ctx env e (c, a, r) ty =
   let y = fresh ctx "y" in
   [%string
     "(let %{y} : %{r#Ty} = Effect.perform (%{c} %{e env a}) in %{e (bind env y r) ty})"]
 ;;
 
-(* A deep handler for some of the program's effects around a body of type [b]. *)
 let handler ctx env ty e =
   let handled, b, catch, body_env = handler_setup ctx env in
   let x = fresh ctx "x" in
@@ -82,8 +73,6 @@ let handler ctx env ty e =
     (String.concat " " (List.map arm handled))
 ;;
 
-(* A shallow handler. [go] resumes the fiber under the same handler each time.
-   *)
 let shallow ctx env ty e =
   let handled, b, catch, body_env = handler_setup ctx env in
   let go = fresh ctx "go" in
@@ -117,7 +106,6 @@ let shallow ctx env ty e =
     (e body_env b)
 ;;
 
-(* OCaml 5.3's [match ... with effect E v, k -> ...]. *)
 let effect_match ctx env ty e =
   let handled, b, catch, body_env = handler_setup ctx env in
   let x = fresh ctx "x" in

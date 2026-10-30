@@ -2,13 +2,13 @@ open Ty
 open Ctx
 open Gen_ty
 
-(* [locals] are OxCaml stack-allocated values. They are only matched on or have
-   an immediate field read, never returned, stored or captured. *)
+(* Locals are only matched on or have an immediate field read, so none escapes its region.
+   *)
 type env =
   { vars : (string * ty) list
   ; locals : (string * ty) list
   ; in_try : bool
-  ; effs : (string * ty * ty) list (* effects handled by an enclosing handler *)
+  ; effs : (string * ty * ty) list
   ; muts : (string * ty) list (* [let mutable]s, which no closure can use *)
   ; in_fun : bool (* inside a function, which may be called where order matters *)
   }
@@ -17,12 +17,9 @@ let bind env x t = { env with vars = (x, t) :: env.vars }
 let bind_all env vars = List.fold_left (fun env (x, t) -> bind env x t) env vars
 let bind_local env x t = { env with locals = (x, t) :: env.locals }
 let closure env = { env with locals = []; muts = []; in_fun = true }
-
-(* For a function that may be called outside the enclosing handlers. *)
 let escape env = { (closure env) with effs = [] }
 
-(* For a lazy, which must not perform an effect, as that could leave it
-   unfinished. *)
+(* A lazy must not perform an effect, as that could leave it unfinished. *)
 let lazy_body env = { (escape env) with in_try = env.in_try }
 
 let immediate = function

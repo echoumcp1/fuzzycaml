@@ -1,7 +1,7 @@
 open Backend
 open Exec
 
-(* Known bugs, recognised by which backends disagree with the reference (the
+(* Known bugs, recognized by which backends disagree with the reference (the
    first backend), so that a run continues past them. *)
 let atomic_shim =
   {|module Atomic = struct
@@ -58,8 +58,6 @@ let known_bug backends results source =
       (List.combine backends results)
   in
   let odd_names = List.map (fun b -> b.name) odd in
-  (* Whether the odd backends, changed by [f], agree with the reference on
-     [source]. *)
   let odd_agree f source = List.for_all agrees (run_all (List.map f odd) source) in
   odd <> []
   && (List.for_all

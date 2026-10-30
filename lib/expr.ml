@@ -68,7 +68,6 @@ let rec expr ctx env ty depth =
          in
          match other with
          | (x, t) :: _ when use_other ->
-           (* use the newest unused variable of another type *)
            [%string
              "(if %{use (x, t)} = %{literal ctx t} then %{e env ty} else %{e env ty})"]
          | _ ->

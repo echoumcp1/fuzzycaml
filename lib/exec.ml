@@ -16,7 +16,6 @@ type exit =
   | Signaled of int
   | Timeout
 
-(* Runs [argv] in [dir], returning its exit and its stdout and stderr. *)
 let spawn ~dir argv =
   let out = Filename.concat dir [%string "out%{Random.bits ()#Int}"] in
   let err = out ^ ".err" in
@@ -179,7 +178,6 @@ let observable = function
   | Ran (status, out, _) -> `Ran (status, out)
 ;;
 
-(* Backends with identical results are listed together. *)
 let report backends results =
   let body = function
     | Compile_error msg -> [%string "compile error\n%{msg}"]

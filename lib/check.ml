@@ -23,7 +23,6 @@ let fail backends results msg =
   failwith text
 ;;
 
-(* All of a test case's draws: the toggled flags, then the program. *)
 let generate ~ox ~effect_syntax backends tc =
   let backends = if ox then with_toggles tc backends else backends in
   backends, Program.program ~ox ~effect_syntax tc
@@ -83,7 +82,6 @@ let check_case ~size ~ox ~effect_syntax backends tc =
   if known_bug backends results source
   then (
     incr known;
-    (* FUZZYCAML_SAVE=dir saves programs that hit known bugs. *)
     Option.iter
       (fun dir ->
          Out_channel.with_open_bin
@@ -108,8 +106,6 @@ let check_case ~size ~ox ~effect_syntax backends tc =
   | _ -> fail backends results "backends disagree\n"
 ;;
 
-(* Records the choices of each test case, and keeps those of a failing one for
-   the lift pass. *)
 let check ~ox ~effect_syntax backends tc =
   Trace.reset ();
   let size = ref 0 in

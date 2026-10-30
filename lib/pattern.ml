@@ -60,8 +60,8 @@ let pattern_int ctx =
     ]
 ;;
 
-(* A pattern of type [ty] and the variables it binds; with [~binds:false] it
-   binds none, as both sides of an or-pattern must agree. *)
+(* Both sides of an or-pattern must bind the same variables, so [~binds:false] binds none.
+   *)
 let rec pattern ?(top = false) ctx ty depth ~binds =
   let none s = s, [] in
   let var () =

@@ -76,7 +76,8 @@ let specific ctx env ty e =
       ]
   | Float ->
     List.map (fun op -> bin op Float) [ "+."; "-."; "/." ]
-    (* opaque so arm64 cannot fuse the product into an fmadd, which rounds differently from ocamlc *)
+    (* opaque so arm64 cannot fuse the product into an fmadd, which rounds differently
+       from ocamlc *)
     @ [ (fun () -> [%string "(Sys.opaque_identity (%{e env Float} *. %{e env Float}))"]) ]
     @ List.map
         (fun f -> call f [ Float ])
@@ -220,7 +221,6 @@ let specific ctx env ty e =
                "(Array.init %{n ()} (fun (%{i} : int) -> %{e (bind (closure env) i Int) \
                 t}))"])
          ; (fun () ->
-             (* each element of a 2D array, set in nested loops *)
              let a = fresh ctx "a" in
              let r = fresh ctx "r" in
              let i = fresh ctx "i" in
@@ -331,7 +331,6 @@ let specific ctx env ty e =
                 Some
                   (fun () ->
                     let s = fresh ctx "s" in
-                    (* unboxed field uf is copied from boxed field f *)
                     let copy (f, _) =
                       [%string "%{f} = %{s}.%{String.sub f 1 (String.length f - 1)}"]
                     in

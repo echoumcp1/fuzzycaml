@@ -2,8 +2,6 @@ open Config
 open Ty
 open Ctx
 
-(* With [~unboxed], the type may be a [restricted] one, which only a binding,
-   a function argument or result, or a record field can have. *)
 let rec gen_ty ?(unboxed = false) ctx ~first_order depth =
   let sub () = gen_ty ctx ~first_order (depth - 1) in
   let named =
@@ -62,9 +60,7 @@ let rec gen_ty ?(unboxed = false) ctx ~first_order depth =
            Arrow (a, gen_ty ~unboxed:true ctx ~first_order (depth - 1)))
        ])
 
-(* In OxCaml, arrays hold numbers, boxed or not, or arrays of them. Otherwise
-   they hold any type, but floats more often, since float arrays are stored
-   flat. *)
+(* Floats are more likely, since float arrays are stored flat. *)
 and array_elem ctx depth =
   choose
     ctx

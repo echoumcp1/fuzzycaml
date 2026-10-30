@@ -1,6 +1,3 @@
-(* Usage: dune exec bin/fuzzycaml.exe -- [--sample] [--ox] [TEST_CASES]. See
-   README.md. *)
-
 open Hegel
 open Backend
 open Check
@@ -18,7 +15,6 @@ let () =
     { (Settings.create ~test_cases ()) with
       suppress_health_check = [ Too_slow; Test_cases_too_large; Large_initial_test_case ]
     ; database =
-        (* FUZZYCAML_DATABASE=dir keeps failures, so a later run replays them. *)
         (match Sys.getenv_opt "FUZZYCAML_DATABASE" with
          | Some dir -> Path dir
          | None -> Disabled)

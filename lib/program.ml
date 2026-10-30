@@ -1,6 +1,3 @@
-(* Generates well-typed OCaml programs that terminate and whose output does
-   not depend on evaluation order or on any unspecified behaviour. *)
-
 open Config
 open Ty
 open Printer
@@ -131,8 +128,6 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     | (child, _) :: _ when flip ctx -> Named child
     | _ -> fo_ty ctx
   in
-  (* For the lift pass: the type choices of a binding, under this program's
-     features and declarations. *)
   let state = !features, !mixed, !urec, !poly_parent in
   (Trace.binding_types
    := fun target ->

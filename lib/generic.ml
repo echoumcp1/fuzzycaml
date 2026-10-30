@@ -14,8 +14,6 @@ open Forms
 let generic ctx env ty e =
   let fo = first_order ty in
   let value = not (restricted ty) in
-  (* A scrutinee of type [s], sometimes a local (whose components are then also
-     local). *)
   let scrutinee env s =
     match List.filter (fun (_, t) -> t = s) env.locals with
     | locals when locals <> [] && flip ~p:0.6 ctx -> fst (pick ctx locals), true
@@ -233,7 +231,6 @@ let generic ctx env ty e =
              fields
          | Variant _ -> [])
       (indexed_decls ctx)
-  (* Reading an array at an in-bounds index. OxCaml arrays hold numbers. *)
   @ (if
        on "arrays"
        &&
@@ -314,7 +311,7 @@ let generic ctx env ty e =
   @ (if value && on "manyargs" then [ (fun () -> many_args ctx env ty e) ] else [])
   @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty e) ] else [])
   @ boost (if value && on "exns" then [ (fun () -> local_exn ctx env ty e) ] else [])
-  (* Both branches are equal, so the optimiser can join them. *)
+  (* Both branches are equal, so the optimizer can join them. *)
   @ boost
       (if on "samebranch"
        then

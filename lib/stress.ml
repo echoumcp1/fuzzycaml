@@ -3,7 +3,6 @@ open Ctx
 open Gen_ty
 open Env
 
-(* [let x : t = <e> in ] for each variable. *)
 let lets e env vars =
   String.concat
     ""
@@ -87,7 +86,7 @@ let many_args ctx env ty e =
     outer
 ;;
 
-(* Fresh allocations live across a collection and are used afterwards, so the GC
+(* Fresh allocations live across a collection and are used afterward, so the GC
    must find them wherever the backend keeps them. *)
 let gc ctx env ty e =
   let vars = List.init (int_in ctx 2 6) (fun _ -> fresh ctx "g", fo_ty ctx) in

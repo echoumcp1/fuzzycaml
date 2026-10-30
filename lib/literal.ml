@@ -40,8 +40,6 @@ let rec float_literal ctx =
     ; (fun () -> [%string "(Int64.float_of_bits %{float_bits ctx})"])
     ]
 
-(* Edge-case bit patterns: subnormals, the largest finite value, powers of two
-   one ulp off, and NaNs with payloads. *)
 and float_bits ctx =
   let edge =
     [ 1L
@@ -75,8 +73,6 @@ let float32_bits ctx =
   paren (p "%ldl" (if flip ctx then Int32.logor bits Int32.min_int else bits))
 ;;
 
-(* A literal of a newer number type: an integer in its range or a float32,
-   unboxed with # where the syntax allows and by conversion otherwise. *)
 let num_literal ctx t =
   let w = width t in
   let int_value () =

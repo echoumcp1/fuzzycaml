@@ -2,7 +2,7 @@ let p = Printf.sprintf
 
 type backend =
   { name : string
-  ; argv : string list (* compiler and flags; the source and output are appended *)
+  ; argv : string list
   }
 
 let read_process cmd =
@@ -18,15 +18,12 @@ let switch_bin switch =
   |> Option.map (fun bin -> switch, bin)
 ;;
 
-(* With [~ox], only flambda2 switches, at each optimisation level. *)
 let discover ~ox =
   let switches =
     match read_process [| "opam"; "switch"; "list"; "-s" |] with
     | Some out -> String.split_on_char '\n' out |> List.filter (( <> ) "")
     | None -> []
   in
-  (* FUZZYCAML_SWITCHES="a,b" restricts discovery to those switches, in that
-     order. The first backend is the reference. *)
   let switches =
     match Sys.getenv_opt "FUZZYCAML_SWITCHES" with
     | None -> switches
@@ -43,7 +40,6 @@ let discover ~ox =
       let config var = read_process [| ocamlopt; "-config-var"; var |] in
       let flambda2 = config "flambda2" = Some "true" in
       let flambda = config "flambda" = Some "true" || flambda2 in
-      (* OxCaml's unboxed number modules *)
       let libs ext =
         if ox
         then
@@ -56,7 +52,6 @@ let discover ~ox =
           ]
         else []
       in
-      (* native code, with the compiler's invariant checks *)
       let nat flags =
         (ocamlopt
          :: "-dcmm-invariants"
@@ -67,7 +62,6 @@ let discover ~ox =
       let opt suffix flags =
         { name = [%string "%{switch}/ocamlopt%{suffix}"]; argv = nat flags }
       in
-      (* the reference: bytecode with the debug runtime *)
       let byte =
         { name = [%string "%{switch}/ocamlc"]
         ; argv = (ocamlc :: libs ".cma") @ [ "-runtime-variant"; "d" ]
@@ -116,7 +110,6 @@ let discover ~ox =
           ]))
 ;;
 
-(* FUZZYCAML_EXTRA="name=compiler flags..;name2=..." adds backends. *)
 let extra () =
   match Sys.getenv_opt "FUZZYCAML_EXTRA" with
   | None -> []
@@ -135,7 +128,6 @@ let extra () =
         })
 ;;
 
-(* Whether every backend is OCaml 5.3 or later, which has effect syntax. *)
 let effect_syntax ~ox backends =
   (not ox)
   && List.for_all

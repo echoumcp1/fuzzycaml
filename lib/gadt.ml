@@ -2,7 +2,6 @@ open Ty
 open Ctx
 open Env
 
-(* A term of the prelude's GADT that evaluates to a value of [ty]. *)
 let rec gadt ctx env ty e depth =
   let sub t = gadt ctx env t e (depth - 1) in
   let lit () = [%string "(GLit %{e env ty})"] in
