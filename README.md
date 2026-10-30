@@ -1,3 +1,7 @@
+# WARNING
+
+This fuzzer is an experiment in autonomous software development by large language models and external shrinking passes. I used Claude Opus 5.5 on medium effort and instrumented Hegel locally to provide information on generation time, shrink time, shrink passes, and shrink failures, among other metrics. Claude used this data to improve generation. I also periodically checked the programs Claude produced and suggested fixes or improvements, but almost all of the code in this repository is not human checked. 
+
 # About
 fuzzycaml generates random OCaml programs, compiles and runs them with several compilers and flag sets, and reports compilation failures, crashes, and output mismatches. Failing programs are shrunk with Hegel before they are reported.
 
