@@ -9,8 +9,6 @@ let compiled = ref 0
 let timeouts = ref 0
 let known = ref 0
 
-(* One exception per kind of failure, so that Hegel tells them apart without
-   backtraces and never shrinks one kind into another. *)
 exception Not_compiled of string
 exception Backend_crashed of string
 exception Backends_disagree of string
@@ -21,9 +19,6 @@ let () =
     | _ -> None)
 ;;
 
-(* Different choices often give the same program; it is compiled once. Only
-   outcomes that are a property of the program are kept: failures and
-   rejections, not errors of the machine. *)
 let outcomes : (string, (exn * Printexc.raw_backtrace) option) Hashtbl.t =
   Hashtbl.create 1024
 ;;

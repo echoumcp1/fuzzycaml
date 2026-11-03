@@ -2,15 +2,6 @@ open Config
 open Ty
 open Ctx
 
-(* An expression's span starts with the choices that give its type, so that
-   when the shrinker replaces a span with one of its descendants, a position
-   that draws its type reads the descendant's, and a position whose type the
-   context fixes keeps its own.
-
-   A type is a sequence of indices into [slots], the same at every position. A
-   fixed position draws each from a single-value range, so there is nothing to
-   shrink; a free position draws from the range up to the last allowed slot
-   and draws again on a slot it does not allow. *)
 
 type params =
   { first_order : bool
@@ -46,12 +37,8 @@ type slot =
   | UTuple_
   | Or_null_
 
-(* A program declares up to four types, each with an unboxed twin, and up to
-   four more unboxed records. *)
 let max_decls = 12
 
-(* The slots allowed without --ox come first, so that those draws have a short
-   range. Float has three slots, as it always had three options. *)
 let slots =
   Array.of_list
     ([ Base Int
@@ -137,8 +124,6 @@ let allowed ctx prm =
     | Or_null_, None -> prm.unboxed && prm.depth > 0 && ox "or_null"
 ;;
 
-(* Array elements, with their own slots: floats are more likely, since float
-   arrays are stored flat. *)
 type elem =
   | Elem of ty
   | Elem_any
@@ -221,7 +206,6 @@ and decode_elem ctx depth =
 
 let fixed ctx i = ignore (int_in ctx i i)
 
-(* the choices [decode] reads as [t] *)
 let rec encode ctx t =
   fixed ctx (slot_of t);
   match t with

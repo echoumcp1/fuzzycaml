@@ -9,8 +9,6 @@ let handler_setup ctx env =
   handled, catch, { env with effs = handled @ env.effs; in_try = env.in_try || catch }
 ;;
 
-(* The handled computation, of a type drawn with it: the result type of a
-   handled effect or the type of a variable in scope, nearly always. *)
 let computation ctx env handled g =
   let results = List.map (fun (_, _, result) -> result) handled in
   g.free ~candidates:(results @ candidates ctx env first_order_ty) ~p:0.95 env (Any fo)

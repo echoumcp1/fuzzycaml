@@ -19,27 +19,20 @@ let rec body ctx env ty depth =
     x
   in
   let leaf () =
-    (* i = 0 is the literal, so shrinking turns variable uses into constants. *)
     let i = int_in ctx 0 (List.length vars) in
     let prefer_unused = flip ~p:(if unused = [] then 0. else 0.7) ctx in
     if i > 0 || prefer_unused
     then (
-      (* one choice either way, so that out of scope the same choices read as
-         the simplest literal *)
       let j =
         if prefer_unused then int_in ctx 0 (List.length unused - 1) else int_in ctx 0 0
       in
       use (if prefer_unused then List.nth unused j else List.nth vars (i - 1)))
     else (
       let l = literal ctx ty in
-      (* Sys.opaque_identity keeps the compiler from folding the value away. *)
       if (not (restricted ty)) && on "opaque" && flip ~p:0.15 ctx
       then [%string "(Sys.opaque_identity %{l})"]
       else l)
   in
-  (* The depth and the variables in scope only set the probability, so that
-     the choice reads the same wherever the shrinker moves it. A leaf is
-     false, which the shrinker tries first. *)
   let p_branch =
     if depth <= 0
     then 0.
@@ -55,8 +48,6 @@ let rec body ctx env ty depth =
       (fun (x, t) -> t <> ty && first_order t && not (Hashtbl.mem ctx.used x))
       env.vars
   in
-  (* forced where the context rules the form out, so the choice is always
-     there and reads as not taking the form *)
   let use_other = flip ~p:(if other = [] then 0. else 0.3) ctx in
   let performs = List.filter (fun (_, _, result) -> result = ty) env.effs in
   let raises = flip ~p:(if env.in_try then 0.15 else 0.) ctx in
@@ -73,8 +64,6 @@ let rec body ctx env ty depth =
   else if performs_let
   then perform_let ctx env e (pick ctx env.effs) ty
   else (
-    (* Prefer operations on [ty] over structural forms, so values are computed
-       and not only passed around. *)
     let p_specific =
       match ty with
       | Int | Bool | Float | Char | Int64 | Str | List _ | Num _ | U _ | Arr _ -> 0.7
@@ -112,7 +101,6 @@ and gen ctx depth =
         ty, s)
   ; scrutinee =
       (fun ?candidates ?alt env shape ->
-        (* outside the span, which holds only the type and the expression *)
         let local = flip ~p:0.6 ctx in
         at ctx env ?candidates ~local ?alt shape depth)
   }

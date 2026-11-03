@@ -21,6 +21,7 @@ Environment variables:
 - `FUZZYCAML_SWITCHES=a,b`: use only these opam switches, in this order; the first is the reference.
 - `FUZZYCAML_EXTRA="name=compiler flags;..."`: add backends.
 - `FUZZYCAML_DATABASE=dir`: save failures in Hegel's database at `dir`, so a later run replays them first.
+- `FUZZYCAML_REPLAY=blob`: replay a failure blob (printed after a failure as `rerun with`) and report it as is, without shrinking; fails if it no longer reproduces.
 - `FUZZYCAML_FEATURES=a,b`: enable these features in every program (see `all_features` in `lib/config.ml`).
 - `FUZZYCAML_SAVE=dir`: write programs that hit a known bug to `dir/known<pid>-<n>.ml`.
 - `FUZZYCAML_FIXED_OCLASSIC=<ocamlopt>`: a compiler with the flambda `-Oclassic` constant field fix (see Known bugs).
@@ -75,7 +76,6 @@ lib/specific.ml    operations on each type
 lib/generic.ml     forms at any type (let, if, match, functions, loops, try)
 lib/expr.ml        expression generator
 lib/program.ml     whole programs
-bench/             shrinking benchmark (see Benchmarking)
 run.sh, watch.sh   long runs
 ```
 
@@ -99,9 +99,10 @@ Each program enables a random subset of features, listed on its first line as `(
 
 The generator prefers variables that are not used yet, so that function parameters are not dead. Every choice is a Hegel draw and every expression is a span, so shrinking can remove features, flags and subexpressions and still produce a well-typed program.
 
-An expression's span starts with the choices that give its type: forced where the context fixes the type (the operands of `+`), drawn where it does not (a top-level binding, a `let`-bound expression, a function argument, the scrutinee of a `match`). When Hegel replaces an expression with one of its subexpressions, the subexpression's type comes with it, so `let v1 : int = (fst (Int64.to_int x, 0))` shrinks to `let v1 : int64 = x`. The choices of an expression read the same wherever Hegel moves them: whether an expression is a leaf is a choice, forced at the depth limit; a form the context rules out keeps its place in the list of forms; a variable takes as many choices as the simplest literal, which is what it reads as out of scope.
-
-Different choices often give the same program; the fuzzer compiles each program once and remembers the result. Declarations of types, effects and atomics that nothing mentions are left out of the program, so a shrunk program does not carry them. Each element of a repeated construct (declarations, fields, constructors, bindings) starts with its continue bit inside its span, and choices the context may rule out are drawn forced, so that deleting an element leaves the choices after it as they were.
+An expression's span consists of the choices for its type and for the actual expression. They are forced where the
+context fixes the type (e.g. the operands of `+`) and drawn where it does not (e.g. a `let`-bound expression). Whether
+an expression is a leaf is a choice to allow the shrinker to trim expression trees. Different choices can give the same
+program, so the fuzzer compiles each program once and caches the result.
 
 # Backends
 Each opam switch adds these backends:
@@ -121,22 +122,3 @@ For each program, in order:
 5. Backends differ in compile result, exit status, or output: failure.
 
 During shrinking, only the reference and the first disagreeing backend are run. The report shows the shrunk program, the backends grouped by result, and a `failure_blobs` line that reproduces it. At the end, the fuzzer prints how many programs it ran and compiled, timed out, and matched known bugs.
-
-# Benchmarking
-
-Hegel stops shrinking after 300 seconds, and each distinct program costs a compile, so a real shrink gets a few hundred compiles. `bench/` measures how small programs get by the number of distinct programs tried, without a compiler: a failure is a program whose text satisfies one of eight oracles (it contains `Float.fma`, or both `Hashtbl.hash` and `List.fold_left`, ...), chosen to need an expression of another type than its binding, or two constructs at once.
-
-To measure a change, run the grid before and after it, from a worktree of the base commit and from the working tree:
-
-```
-dune build
-dune exec bench/bench.exe -- grid before.txt           # every oracle over seeds 1..30 (-seeds N, -jobs J)
-dune exec bench/bench.exe -- summary before.txt after.txt   # medians: final size, calls, compiles, size by 100/300/1000/3000 compiles
-dune exec bench/bench.exe -- compare before.txt after.txt   # seed by seed: smaller, equal, larger, median ratio
-dune exec bench/bench.exe -- show after.txt fma 3           # the shrunk program of one run
-dune exec bench/bench.exe -- compile 400                    # compile 400 generated programs with the first backend
-```
-
-The oracles never compile anything, so a change that drops needed text looks like a gain to them: run `compile` after a change to the generator. It needs an opam switch, as the fuzzer does.
-
-Sizes are in characters after the prelude. A grid takes a few minutes. The same seed gives the same initial program only on the same generator, so compare medians and the seed-by-seed counts, not single runs. `BENCH_DEBUG=1` prints Hegel's shrinker log for a `run`, and `BENCH_DEBUG=2` every program it tries.

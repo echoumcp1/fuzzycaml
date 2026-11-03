@@ -40,5 +40,14 @@ let () =
         !known);
     let effect_syntax = effect_syntax ~ox backends in
     Printf.printf "effect syntax: %b\n%!" effect_syntax;
-    run_hegel_test ~settings ~database_key:"fuzzycaml" (check ~ox ~effect_syntax backends))
+    let failure_blobs =
+      match Sys.getenv_opt "FUZZYCAML_REPLAY" with
+      | Some blob -> [ blob ]
+      | None -> []
+    in
+    run_hegel_test
+      ~settings
+      ~database_key:"fuzzycaml"
+      ~failure_blobs
+      (check ~ox ~effect_syntax backends))
 ;;

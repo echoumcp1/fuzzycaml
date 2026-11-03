@@ -12,8 +12,6 @@ open Expr
 
 let module_boundary = "(* module boundary *)\n"
 
-(* Whether [name], an identifier ending in a digit, occurs in [text] as a whole
-   word; [_] may precede it, as in [show_t3]. *)
 let mentions text name =
   let n = String.length name in
   let alnum c =
@@ -29,11 +27,6 @@ let mentions text name =
   go 0
 ;;
 
-(* A declaration of a type, effect or atomic is kept only while a later piece
-   mentions one of its names: the compiled code does not depend on an unused
-   one, so it need not stay in a shrunk program. A type's names are its own and
-   those of its constructors and fields, since a value of the type is often
-   built and taken apart without naming the type. *)
 let assemble pieces =
   let rec keep = function
     | [] -> []

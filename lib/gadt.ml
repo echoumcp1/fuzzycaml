@@ -3,7 +3,6 @@ open Ctx
 open Gen_ty
 open Env
 
-(* A term at a position of [shape], and its type. *)
 let rec gadt ctx env shape g depth =
   let e = g.e in
   let sub sh = gadt ctx env sh g (depth - 1) in

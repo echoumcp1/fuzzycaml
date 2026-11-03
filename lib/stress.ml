@@ -56,8 +56,6 @@ let many_args ctx env ty g =
   let n = fresh ctx "n" in
   let env = closure env in
   let m = fresh ctx "m" in
-  (* A parameter's type is drawn with its argument in the outer call: an int or
-     a float two times in three. *)
   let outer =
     List.init (int_in ctx 9 14) (fun _ ->
       let t, v = g.free ~candidates:[ Int; Float ] ~p:0.67 env (Any fo) in

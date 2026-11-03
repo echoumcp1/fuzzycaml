@@ -8,8 +8,6 @@ let partial ctx env ty g =
   let f = fresh ctx "f" in
   let n = int_in ctx 1 4 in
   let env = closure env in
-  (* A parameter's type is drawn with its first expression: the default of an
-     optional one, the argument of the others. *)
   let params, body_env =
     List.fold_left
       (fun (params, body_env) i ->

@@ -18,8 +18,6 @@ let int_in ctx lo hi = Draw.int ctx.tc lo hi
 let flip ?p ctx = Draw.bool ?p ctx.tc
 let pick ctx l = List.nth l (int_in ctx 0 (List.length l - 1))
 
-(* A form the context rules out keeps its place in the list, so that the index
-   of a form means the same at every position; [choose] draws again on it. *)
 exception Inapplicable
 
 let gate applicable forms =
@@ -38,8 +36,6 @@ let choose ctx options =
 
 let indexed_decls ctx = List.mapi (fun i d -> i, d) (Array.to_list ctx.decls)
 
-(* [n] flips whatever the length of [l], so that deleting an element of [l]
-   does not shift the choices after it. *)
 let some ctx n l =
   let flips = List.init (max n (List.length l)) (fun _ -> flip ctx) in
   List.filteri (fun i _ -> List.nth flips i) l
@@ -58,7 +54,6 @@ let field_values value fields =
     (List.map (fun (field, field_ty) -> [%string "%{field} = %{value field_ty}"]) fields)
 ;;
 
-(* Spans with the same label are what the shrinker swaps for one another. *)
 let label = Generators.Ppx_internal.Labels.from_name
 let repeat_label = label "fuzzycaml.repeat"
 let expr_label = label "fuzzycaml.expr"
@@ -67,9 +62,6 @@ let span ?(label = repeat_label) ctx f =
   draw_silent ctx.tc (Generators.Ppx_internal.composite_with_label ~label (fun _ -> f ()))
 ;;
 
-(* Each element starts with a continue bit inside its span, forced below lo,
-   so that deleting an element's span leaves the others as they were. (Every
-   draw is a span to Hegel, so a bit outside the span is not deleted with it.) *)
 let repeat ctx lo hi f =
   let rec go i =
     if i >= hi

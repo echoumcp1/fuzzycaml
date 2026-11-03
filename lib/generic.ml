@@ -133,7 +133,6 @@ let generic ctx env ty g =
              | _ -> None)
           (indexed_decls ctx)
       in
-      (* outside the scrutinee's span, whatever its type *)
       let tuple = flip ~p:0.4 ctx in
       let nested = flip ~p:0.3 ctx in
       let alt = function

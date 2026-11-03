@@ -51,8 +51,6 @@ let elem_of = function
 
 let first_order_ty t = if first_order t then Some t else None
 
-(* [e] at a fixed type; [free] draws the type, preferring [candidates];
-   [scrutinee] may be a local variable or [alt]'s expression instead. *)
 type gen =
   { e : env -> ty -> string
   ; free : ?candidates:ty list -> ?p:float -> env -> shape -> ty * string

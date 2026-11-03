@@ -32,7 +32,6 @@ let local_binding ctx env ty g =
   in
   let mk = fresh ctx "mk" in
   let z = fresh ctx "z" in
-  (* an allocation's type is drawn with it, as an expression's is *)
   let s, source =
     choose
       ctx
