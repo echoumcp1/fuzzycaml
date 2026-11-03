@@ -1,0 +1,7 @@
+(executable
+ (name bench)
+ (flags
+  (:standard -open Fuzzycaml_lib))
+ (preprocess
+  (pps ppx_string))
+ (libraries fuzzycaml_lib hegel unix))
