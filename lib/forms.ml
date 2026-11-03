@@ -3,34 +3,41 @@ open Ctx
 open Gen_ty
 open Env
 
-let partial ctx env ty e =
+let partial ctx env ty g =
+  let e = g.e in
   let f = fresh ctx "f" in
   let n = int_in ctx 1 4 in
   let env = closure env in
+  (* A parameter's type is drawn with its first expression: the default of an
+     optional one, the argument of the others. *)
   let params, body_env =
     List.fold_left
-      (fun (params, env) i ->
+      (fun (params, body_env) i ->
          let x = fresh ctx "a" in
          let kind =
            if i = n - 1
            then `Pos
            else choose ctx [ (fun () -> `Pos); (fun () -> `Lab); (fun () -> `Opt) ]
          in
-         let t = if kind = `Pos then top_ty ctx else any_ty ctx in
-         let decl =
+         let t, decl, arg =
            match kind with
-           | `Pos -> [%string "(%{x} : %{t#Ty})"]
-           | `Lab -> [%string "~(%{x} : %{t#Ty})"]
-           | `Opt -> [%string "?(%{x} : %{t#Ty} = %{e env t})"]
+           | `Pos ->
+             let t, a = g.free env (Any top) in
+             t, [%string "(%{x} : %{t#Ty})"], Some (true, paren a)
+           | `Lab ->
+             let t, a = g.free env (Any any) in
+             t, [%string "~(%{x} : %{t#Ty})"], Some (false, [%string "~%{x}:(%{a})"])
+           | `Opt ->
+             let t, d = g.free env (Any any) in
+             t, [%string "?(%{x} : %{t#Ty} = %{d})"], None
          in
-         params @ [ x, t, kind, decl ], bind env x t)
+         params @ [ x, t, kind, decl, arg ], bind body_env x t)
       ([], env)
       (List.init n Fun.id)
   in
-  let arg ~omittable (x, t, kind, _) =
+  let arg ~omittable (x, t, kind, _, arg) =
     match kind with
-    | `Pos -> Some (true, paren (e env t))
-    | `Lab -> Some (false, [%string "~%{x}:(%{e env t})"])
+    | `Pos | `Lab -> arg
     | `Opt ->
       choose
         ctx
@@ -44,7 +51,7 @@ let partial ctx env ty e =
   let rec args = function
     | [] -> []
     | param :: rest ->
-      let omittable = List.exists (fun (_, _, kind, _) -> kind = `Pos) rest in
+      let omittable = List.exists (fun (_, _, kind, _, _) -> kind = `Pos) rest in
       let a = arg ~omittable param in
       Option.to_list a @ args rest
   in
@@ -89,7 +96,7 @@ let partial ctx env ty e =
         [%string "(%{head} %{first})"]
         rest
   in
-  let decls = String.concat " " (List.map (fun (_, _, _, decl) -> decl) params) in
+  let decls = String.concat " " (List.map (fun (_, _, _, decl, _) -> decl) params) in
   [%string "(let%{attr} %{f} %{decls} : %{ty#Ty} = %{e body_env ty} in %{call})"]
 ;;
 
@@ -149,17 +156,17 @@ let local_atomic ctx env ty e =
      %{ops} done; Atomic.get %{a})"]
 ;;
 
-let local_exn ctx env ty e =
+let local_exn ctx env ty g =
+  let e = g.e in
   let x = fresh ctx "X" in
   let th = fresh ctx "th" in
   let b = fresh ctx "b" in
   let v = fresh ctx "v" in
   let cb = fresh ctx "c" in
   let cv = fresh ctx "c" in
-  let s = fo_env_ty ctx env in
   let env = closure env in
+  let s, arg = g.free ~candidates:(candidates ctx env first_order_ty) env (Any fo) in
   let handler = e (bind env v s) ty in
-  let arg = e env s in
   let cond = e env Bool in
   let no_raise = e (bind (bind env b Bool) v s) ty in
   let raise = pick ctx [ "raise"; "raise_notrace" ] in
@@ -171,17 +178,12 @@ let local_exn ctx env ty e =
      %{handler})"]
 ;;
 
-let lazy_value ctx env ty e =
-  let s =
-    from_env
-      ctx
-      env
-      (fun t -> if restricted t then None else Some t)
-      (fun () -> any_ty ctx)
-  in
+let lazy_value ctx env ty g =
+  let e = g.e in
+  let values = candidates ctx env (fun t -> if restricted t then None else Some t) in
+  let s, body = g.free ~candidates:values (lazy_body env) (Any any) in
   let l = fresh ctx "lz" in
   let x = fresh ctx "x" in
-  let body = e (lazy_body env) s in
   choose
     ctx
     [ (fun () ->
@@ -285,7 +287,7 @@ let nonzero ctx =
     ; (fun () -> "max_int")
     ; (fun () -> "min_int")
     ; (fun () ->
-        let n = Trace.unbounded ctx.tc in
+        let n = Draw.unbounded ctx.tc in
         paren (string_of_int (if n = 0 then 3 else n)))
     ]
 ;;
@@ -293,7 +295,8 @@ let nonzero ctx =
 (* Additions to [ticks] commute, so the total only changes if a compiler drops or repeats
    one. They are only used outside functions and where nothing else can raise or perform,
    so evaluation order cannot change the result. *)
-let effectful ctx env ty e =
+let effectful ctx env ty g =
+  let e = g.e in
   let tick t () = [%string "(ticks := !ticks + %{int_in ctx 1 99#Int}; %{e env t})"] in
   let value = not (restricted ty) in
   [ tick ty ]
@@ -301,15 +304,15 @@ let effectful ctx env ty e =
      then
        [ (fun () ->
            (* the tick belongs to the partial application, so it happens once *)
-           let g = fresh ctx "g" in
+           let f = fresh ctx "g" in
            let x = fresh ctx "x" in
            let y = fresh ctx "y" in
-           let s = env_ty ctx env some_ty in
+           let s, arg = g.free ~candidates:(candidates ctx env some_ty) env (Any any) in
            let body = e (bind (bind (closure env) x s) y Int) ty in
            [%string
-             "(let %{g} = (ticks := !ticks + %{int_in ctx 1 99#Int}; fun (%{x} : \
-              %{s#Ty}) (%{y} : int) -> %{body}) %{paren (e env s)} in let _ = %{g} \
-              %{paren (e env Int)} in %{g} %{paren (e env Int)})"])
+             "(let %{f} = (ticks := !ticks + %{int_in ctx 1 99#Int}; fun (%{x} : \
+              %{s#Ty}) (%{y} : int) -> %{body}) %{paren arg} in let _ = %{f} %{paren (e \
+              env Int)} in %{f} %{paren (e env Int)})"])
        ; (fun () ->
            let x = fresh ctx "x" in
            [%string

@@ -60,8 +60,9 @@ lib/config.ml      global state: OxCaml mode, enabled features, properties of de
 lib/ty.ml          types, number conversions, type predicates
 lib/printer.ml     value printers and type declarations
 lib/prelude.ml     helper definitions at the start of every program
+lib/draw.ml        Hegel draws
 lib/ctx.ml         generation context and drawing helpers
-lib/gen_ty.ml      random types
+lib/gen_ty.ml      types: drawn, or recorded forced at a position whose type the context fixes
 lib/literal.ml     literals
 lib/pattern.ml     declared types and patterns
 lib/env.ml         variables in scope
@@ -74,6 +75,7 @@ lib/specific.ml    operations on each type
 lib/generic.ml     forms at any type (let, if, match, functions, loops, try)
 lib/expr.ml        expression generator
 lib/program.ml     whole programs
+bench/             shrinking benchmark (see Benchmarking)
 run.sh, watch.sh   long runs
 ```
 
@@ -95,7 +97,11 @@ Types are `int`, `bool`, `float`, `char`, `int64`, `string`, lists, options, pai
 
 Each program enables a random subset of features, listed on its first line as `(* features: ... *)`. Disabled features are never generated, and enabled ones are weighted up. With the `modules` feature, the program is split at `(* module boundary *)` into `m1.ml` and `prog.ml` and compiled without `-opaque`, so code is inlined across modules.
 
-The generator prefers variables that are not used yet, so that function parameters are not dead. Every choice is a Hegel draw and every expression is a labeled span, so shrinking can remove features, flags and subexpressions and still produce a well-typed program.
+The generator prefers variables that are not used yet, so that function parameters are not dead. Every choice is a Hegel draw and every expression is a span, so shrinking can remove features, flags and subexpressions and still produce a well-typed program.
+
+An expression's span starts with the choices that give its type: forced where the context fixes the type (the operands of `+`), drawn where it does not (a top-level binding, a `let`-bound expression, a function argument, the scrutinee of a `match`). When Hegel replaces an expression with one of its subexpressions, the subexpression's type comes with it, so `let v1 : int = (fst (Int64.to_int x, 0))` shrinks to `let v1 : int64 = x`. The choices of an expression read the same wherever Hegel moves them: whether an expression is a leaf is a choice, forced at the depth limit; a form the context rules out keeps its place in the list of forms; a variable takes as many choices as the simplest literal, which is what it reads as out of scope.
+
+Different choices often give the same program; the fuzzer compiles each program once and remembers the result. Declarations of types, effects and atomics that nothing mentions are left out of the program, so a shrunk program does not carry them. Each element of a repeated construct (declarations, fields, constructors, bindings) starts with its continue bit inside its span, and choices the context may rule out are drawn forced, so that deleting an element leaves the choices after it as they were.
 
 # Backends
 Each opam switch adds these backends:
@@ -114,4 +120,23 @@ For each program, in order:
 4. A backend was killed by a signal or raised an uncaught exception other than `Exit`: failure.
 5. Backends differ in compile result, exit status, or output: failure.
 
-During shrinking, only the reference and the first disagreeing backend are run. After Hegel's shrinking, the fuzzer tries replacing each top-level binding with an expression of another type inside it, which Hegel cannot do. The report shows the shrunk program, the backends grouped by result, and a `failure_blobs` line that reproduces it. At the end, the fuzzer prints how many programs it ran, timed out, and matched known bugs.
+During shrinking, only the reference and the first disagreeing backend are run. The report shows the shrunk program, the backends grouped by result, and a `failure_blobs` line that reproduces it. At the end, the fuzzer prints how many programs it ran and compiled, timed out, and matched known bugs.
+
+# Benchmarking
+
+Hegel stops shrinking after 300 seconds, and each distinct program costs a compile, so a real shrink gets a few hundred compiles. `bench/` measures how small programs get by the number of distinct programs tried, without a compiler: a failure is a program whose text satisfies one of eight oracles (it contains `Float.fma`, or both `Hashtbl.hash` and `List.fold_left`, ...), chosen to need an expression of another type than its binding, or two constructs at once.
+
+To measure a change, run the grid before and after it, from a worktree of the base commit and from the working tree:
+
+```
+dune build
+dune exec bench/bench.exe -- grid before.txt           # every oracle over seeds 1..30 (-seeds N, -jobs J)
+dune exec bench/bench.exe -- summary before.txt after.txt   # medians: final size, calls, compiles, size by 100/300/1000/3000 compiles
+dune exec bench/bench.exe -- compare before.txt after.txt   # seed by seed: smaller, equal, larger, median ratio
+dune exec bench/bench.exe -- show after.txt fma 3           # the shrunk program of one run
+dune exec bench/bench.exe -- compile 400                    # compile 400 generated programs with the first backend
+```
+
+The oracles never compile anything, so a change that drops needed text looks like a gain to them: run `compile` after a change to the generator. It needs an opam switch, as the fuzzer does.
+
+Sizes are in characters after the prelude. A grid takes a few minutes. The same seed gives the same initial program only on the same generator, so compare medians and the seed-by-seed counts, not single runs. `BENCH_DEBUG=1` prints Hegel's shrinker log for a `run`, and `BENCH_DEBUG=2` every program it tries.

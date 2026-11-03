@@ -128,7 +128,7 @@ let rec pattern ?(top = false) ctx ty depth ~binds =
        | Record fields ->
          [ (fun () ->
              let picked =
-               match List.filter (fun _ -> flip ctx) fields with
+               match some ctx 4 fields with
                | [] -> [ List.hd fields ]
                | picked -> picked
              in

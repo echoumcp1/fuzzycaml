@@ -11,14 +11,10 @@ open Ox
 open Stress
 open Forms
 
-let generic ctx env ty e =
+let generic ctx env ty g =
+  let e = g.e in
   let fo = first_order ty in
   let value = not (restricted ty) in
-  let scrutinee env s =
-    match List.filter (fun (_, t) -> t = s) env.locals with
-    | locals when locals <> [] && flip ~p:0.6 ctx -> fst (pick ctx locals), true
-    | _ -> e env s, false
-  in
   let bind_part local env x t =
     if local && not (immediate t) then bind_local env x t else bind env x t
   in
@@ -38,54 +34,59 @@ let generic ctx env ty e =
   in
   [ (fun () -> [%string "(if %{e env Bool} then %{e env ty} else %{e env ty})"])
   ; (fun () ->
-      let s = from_env ctx env some_ty (fun () -> top_ty ctx) in
+      let s, rhs = g.free ~candidates:(candidates ctx env some_ty) env (Any top) in
       let x = fresh ctx "x" in
-      [%string "(let %{x} : %{s#Ty} = %{e env s} in %{e (bind env x s) ty})"])
+      [%string "(let %{x} : %{s#Ty} = %{rhs} in %{e (bind env x s) ty})"])
   ; (fun () ->
-      let s =
-        from_env
-          ctx
-          env
-          (function
-            | Arrow (s, r) when r = ty -> Some s
-            | _ -> None)
-          (fun () -> top_ty ctx)
-      in
-      [%string "(%{e env (Arrow (s, ty))} %{e env s})"])
-  ; (fun () ->
-      let s = top_ty ctx in
-      let x = fresh ctx "x" in
-      [%string "((fun (%{x} : %{s#Ty}) -> %{e (bind (closure env) x s) ty}) %{e env s})"])
-  ; (fun () ->
-      let s = env_ty ctx env elem in
-      let h = fresh ctx "h" in
-      let t = fresh ctx "t" in
-      let l, local = scrutinee env (List s) in
-      let cons_env = bind_part local (bind_part local env h s) t (List s) in
-      [%string "(match %{l} with [] -> %{e env ty} | %{h} :: %{t} -> %{e cons_env ty})"])
-  ; (fun () ->
-      let s =
-        env_ty ctx env (function
-          | Option s -> Some s
+      let args =
+        candidates ctx env (function
+          | Arrow (s, r) when r = ty -> Some s
           | _ -> None)
       in
+      let s, arg = g.free ~candidates:args env (Any top) in
+      [%string "(%{e env (Arrow (s, ty))} %{arg})"])
+  ; (fun () ->
+      let s, arg = g.free env (Any top) in
       let x = fresh ctx "x" in
-      let o, local = scrutinee env (Option s) in
+      [%string "((fun (%{x} : %{s#Ty}) -> %{e (bind (closure env) x s) ty}) %{arg})"])
+  ; (fun () ->
+      let ls, l, local =
+        g.scrutinee ~candidates:(candidates ctx env lists) env (List_of (Any any))
+      in
+      let s = elem_of ls in
+      let h = fresh ctx "h" in
+      let t = fresh ctx "t" in
+      let cons_env = bind_part local (bind_part local env h s) t ls in
+      [%string "(match %{l} with [] -> %{e env ty} | %{h} :: %{t} -> %{e cons_env ty})"])
+  ; (fun () ->
+      let options =
+        candidates ctx env (function
+          | Option _ as t -> Some t
+          | _ -> None)
+      in
+      let os, o, local = g.scrutinee ~candidates:options env (Option_of (Any any)) in
+      let s =
+        match os with
+        | Option s -> s
+        | _ -> assert false
+      in
+      let x = fresh ctx "x" in
       let some_env = bind_part local env x s in
       [%string "(match %{o} with None -> %{e env ty} | Some %{x} -> %{e some_env ty})"])
   ; (fun () ->
+      let pairs =
+        candidates ctx env (function
+          | Pair _ as t -> Some t
+          | _ -> None)
+      in
+      let ps, v, local = g.scrutinee ~candidates:pairs env (Pair_of (Any any, Any any)) in
       let a, b =
-        from_env
-          ctx
-          env
-          (function
-            | Pair (a, b) -> Some (a, b)
-            | _ -> None)
-          (fun () -> any_ty ctx, any_ty ctx)
+        match ps with
+        | Pair (a, b) -> a, b
+        | _ -> assert false
       in
       let x = fresh ctx "x" in
       let y = fresh ctx "y" in
-      let v, local = scrutinee env (Pair (a, b)) in
       let body_env = bind_part local (bind_part local env x a) y b in
       [%string "(let (%{x}, %{y}) = %{v} in %{e body_env ty})"])
   ; (fun () ->
@@ -118,16 +119,12 @@ let generic ctx env ty e =
         [%string "(try %{body} with Exit -> %{e env ty})"])
       else [%string "(if %{e env Bool} then %{e env ty} else %{e env ty})"])
   ; (fun () ->
-      let s =
-        from_env
-          ctx
-          env
-          (function
-            | Named _ as t -> Some t
-            | _ -> None)
-          (fun () -> from_env ctx env some_ty (fun () -> top_ty ctx))
+      let named =
+        candidates ctx env (function
+          | Named _ as t -> Some t
+          | _ -> None)
       in
-      let v, local = scrutinee env s in
+      let named = if named <> [] then named else candidates ctx env some_ty in
       let variants =
         List.filter_map
           (fun (j, d) ->
@@ -136,25 +133,29 @@ let generic ctx env ty e =
              | _ -> None)
           (indexed_decls ctx)
       in
-      let v =
-        match s with
-        | Pair (a, b) when (not local) && flip ~p:0.4 ctx ->
-          [%string "%{e env a}, %{e env b}"]
-        | Named k when (not local) && List.mem_assoc k variants && flip ~p:0.3 ctx ->
+      (* outside the scrutinee's span, whatever its type *)
+      let tuple = flip ~p:0.4 ctx in
+      let nested = flip ~p:0.3 ctx in
+      let alt = function
+        | Pair (a, b) when tuple -> Some (fun () -> [%string "%{e env a}, %{e env b}"])
+        | Named k when nested && List.mem_assoc k variants ->
           (* match-in-match: the inner match's input is opaque, so its result
              constructor is unknown, but each arm builds a known one. *)
-          let outs = List.assoc k variants in
-          let j, ins = pick ctx variants in
-          let off = int_in ctx 0 (List.length outs - 1) in
-          let arm idx (c, args) =
-            let c', args' = List.nth outs ((idx + off) mod List.length outs) in
-            let pat = construct c (List.map (fun _ -> "_") args) in
-            [%string "| %{pat} -> %{construct c' (List.map (e env) args')}"]
-          in
-          let arms = String.concat " " (List.mapi arm ins) in
-          [%string "(match Sys.opaque_identity %{e env (Named j)} with %{arms})"]
-        | _ -> v
+          Some
+            (fun () ->
+              let outs = List.assoc k variants in
+              let j, ins = pick ctx variants in
+              let off = int_in ctx 0 (List.length outs - 1) in
+              let arm idx (c, args) =
+                let c', args' = List.nth outs ((idx + off) mod List.length outs) in
+                let pat = construct c (List.map (fun _ -> "_") args) in
+                [%string "| %{pat} -> %{construct c' (List.map (e env) args')}"]
+              in
+              let arms = String.concat " " (List.mapi arm ins) in
+              [%string "(match Sys.opaque_identity %{e env (Named j)} with %{arms})"])
+        | _ -> None
       in
+      let s, v, local = g.scrutinee ~candidates:named ~alt env (Any top) in
       let arm () =
         let q, bound = pattern ~top:true ctx s 3 ~binds:true in
         let env' = List.fold_left (fun env (x, t) -> bind_part local env x t) env bound in
@@ -184,24 +185,28 @@ let generic ctx env ty e =
        [ (fun () ->
            if on "opaque" then [%string "(Sys.opaque_identity %{e env ty})"] else e env ty)
        ; (fun () ->
-           let s =
-             env_ty ctx env (function
-               | Pair (a, b) when a = ty -> Some b
+           let pairs =
+             candidates ctx env (function
+               | Pair (a, _) as t when a = ty -> Some t
                | _ -> None)
            in
-           [%string "(fst %{e env (Pair (ty, s))})"])
+           let _, v = g.free ~candidates:pairs env (Pair_of (Is ty, Any any)) in
+           [%string "(fst %{v})"])
        ; (fun () ->
-           let s =
-             env_ty ctx env (function
-               | Pair (a, b) when b = ty -> Some a
+           let pairs =
+             candidates ctx env (function
+               | Pair (_, b) as t when b = ty -> Some t
                | _ -> None)
            in
-           [%string "(snd %{e env (Pair (s, ty))})"])
+           let _, v = g.free ~candidates:pairs env (Pair_of (Any any, Is ty)) in
+           [%string "(snd %{v})"])
        ; (fun () ->
-           let s = env_ty ctx env elem in
+           let ls, l =
+             g.free ~candidates:(candidates ctx env lists) env (List_of (Any any))
+           in
+           let s = elem_of ls in
            let acc = fresh ctx "acc" in
            let x = fresh ctx "x" in
-           let l = e env (List s) in
            let init = e env ty in
            let step = e (bind (bind (closure env) acc ty) x s) ty in
            [%string
@@ -221,7 +226,9 @@ let generic ctx env ty e =
                       (* A local record's field is local unless it is immediate. *)
                       let r =
                         if immediate field_ty
-                        then fst (scrutinee env (Named i))
+                        then (
+                          let _, r, _ = g.scrutinee env (Is (Named i)) in
+                          r)
                         else e env (Named i)
                       in
                       [%string "(%{r}).%{field}"])
@@ -263,39 +270,43 @@ let generic ctx env ty e =
          ]
        | _ -> []
      else [])
-  @ (if !ox_mode then ox_forms ctx env ty e else [])
-  @ (if env.in_try then [ (fun () -> raise_at ctx ty) ] else [])
+  @ (if !ox_mode then ox_forms ctx env ty g else [])
+  @ gate env.in_try [ (fun () -> raise_at ctx ty) ]
   @ (if !ox_mode && immediate ty && on "locals"
-     then [ (fun () -> local_binding ctx env ty e) ]
+     then [ (fun () -> local_binding ctx env ty g) ]
      else [])
-  @ boost (if value && on "partial" then [ (fun () -> partial ctx env ty e) ] else [])
+  @ boost (if value && on "partial" then [ (fun () -> partial ctx env ty g) ] else [])
   @ boost
-      (if on "effargs" && (not env.in_try) && (not env.in_fun) && env.effs = []
-       then effectful ctx env ty e
+      (if on "effargs"
+       then
+         gate
+           ((not env.in_try) && (not env.in_fun) && env.effs = [])
+           (effectful ctx env ty g)
        else [])
   @ boost
       (if fo && ctx.effects <> [] && on "deep"
-       then [ (fun () -> handler ctx env ty e) ]
+       then [ (fun () -> handler ctx env ty g) ]
        else [])
   @ boost
       (if fo && ctx.effects <> [] && on "shallow"
-       then [ (fun () -> shallow ctx env ty e) ]
+       then [ (fun () -> shallow ctx env ty g) ]
        else [])
   @ boost
       (if fo && ctx.effects <> [] && !use_effect_syntax && on "effect_syntax"
-       then [ (fun () -> effect_match ctx env ty e) ]
+       then [ (fun () -> effect_match ctx env ty g) ]
        else [])
-  @ boost (if value && on "lazy" then [ (fun () -> lazy_value ctx env ty e) ] else [])
+  @ boost (if value && on "lazy" then [ (fun () -> lazy_value ctx env ty g) ] else [])
   @ boost (if value && on "recvals" then rec_value ctx env ty e else [])
   @ (if on "strings" then [ (fun () -> str_match ctx env ty e) ] else [])
   @ boost
       (if fo && on "gadt"
        then
-         [ (fun () -> [%string "(geval %{gadt ctx env ty e 3})"])
+         [ (fun () -> [%string "(geval %{snd (gadt ctx env (Is ty) g 3)})"])
          ; (fun () ->
              match ty with
-             | Int | Bool -> [%string "(gbump %{gadt ctx env ty e 2} %{e env ty})"]
-             | _ -> [%string "(geval %{gadt ctx env ty e 2})"])
+             | Int | Bool ->
+               [%string "(gbump %{snd (gadt ctx env (Is ty) g 2)} %{e env ty})"]
+             | _ -> [%string "(geval %{snd (gadt ctx env (Is ty) g 2)})"])
          ]
        else [])
   @ boost
@@ -312,10 +323,10 @@ let generic ctx env ty e =
       (if immediate ty && on "atomics"
        then [ (fun () -> local_atomic ctx env ty e) ]
        else [])
-  @ (if fo then [ (fun () -> pressure ctx env ty e) ] else [])
-  @ (if value && on "manyargs" then [ (fun () -> many_args ctx env ty e) ] else [])
-  @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty e) ] else [])
-  @ boost (if value && on "exns" then [ (fun () -> local_exn ctx env ty e) ] else [])
+  @ (if fo then [ (fun () -> pressure ctx env ty g) ] else [])
+  @ (if value && on "manyargs" then [ (fun () -> many_args ctx env ty g) ] else [])
+  @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty g) ] else [])
+  @ boost (if value && on "exns" then [ (fun () -> local_exn ctx env ty g) ] else [])
   (* Both branches are equal, so the optimizer can join them. *)
   @ boost
       (if on "samebranch"

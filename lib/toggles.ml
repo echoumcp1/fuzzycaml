@@ -63,8 +63,8 @@ let supports compiler toggle =
 
 let with_toggles tc backends =
   let levels = [ "-O3"; ""; "-O2"; "-Oclassic"; "-O4" ] in
-  let level = List.nth levels (Trace.int tc 0 (List.length levels - 1)) in
-  let picked = List.filter (fun _ -> Trace.bool ~p:0.08 tc) ox_toggles in
+  let level = List.nth levels (Draw.int tc 0 (List.length levels - 1)) in
+  let picked = List.filter (fun _ -> Draw.bool ~p:0.08 tc) ox_toggles in
   List.map
     (fun b ->
        if String.ends_with ~suffix:"-toggles" b.name

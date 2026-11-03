@@ -8,8 +8,14 @@ open Ox
 open Stress
 open Forms
 
-let specific ctx env ty e =
+let specific ctx env ty g =
+  let e = g.e in
   let bin op t () = [%string "(%{e env t} %{op} %{e env t})"] in
+  let same_fo () =
+    let s, a = g.free ~candidates:(candidates ctx env first_order_ty) env (Any fo) in
+    a, e env s
+  in
+  let list () = g.free ~candidates:(candidates ctx env lists) env (List_of (Any any)) in
   let call f args () =
     [%string {|(%{f} %{String.concat " " (List.map (e env) args)})|}]
   in
@@ -31,10 +37,12 @@ let specific ctx env ty e =
             else string_of_int (int_in ctx 0 62)
           in
           [%string "(%{e env Int} %{op} %{amount})"])
-      ; (fun () -> [%string "(List.length %{e env (List (env_ty ctx env elem))})"])
       ; (fun () ->
-          let s = fo_env_ty ctx env in
-          [%string "(sgn (compare %{e env s} %{e env s}))"])
+          let _, l = list () in
+          [%string "(List.length %{l})"])
+      ; (fun () ->
+          let a, b = same_fo () in
+          [%string "(sgn (compare %{a} %{b}))"])
       ; call "Bool.to_int" [ Bool ]
       ; call "String.length" [ Str ]
       ; call "Hashtbl.hash" [ Str ]
@@ -44,10 +52,14 @@ let specific ctx env ty e =
       ; call "Int64.to_int" [ Int64 ]
       ; (fun () -> [%string "(sgn (Int64.compare %{e env Int64} %{e env Int64}))"])
       ]
-    @ (if !ox_mode && on "numbers" then [ converted ctx env Int e ] else [])
+    @ (if !ox_mode && on "numbers" then [ converted env Int g ] else [])
     @
     if on "arrays"
-    then [ (fun () -> [%string "(array_length %{e env (Arr (array_elem ctx 1))})"]) ]
+    then
+      [ (fun () ->
+          let _, a = g.free env (Arr_of 1) in
+          [%string "(array_length %{a})"])
+      ]
     else []
   | Bool ->
     [ call "not" [ Bool ]
@@ -58,21 +70,27 @@ let specific ctx env ty e =
     ; call "String.contains" [ Str; Char ]
     ; (fun () -> [%string "(String.starts_with ~prefix:%{e env Str} %{e env Str})"])
     ]
-    @ (if !ox_mode && on "numbers" then [ (fun () -> num_compare ctx env e) ] else [])
+    @ (if !ox_mode && on "numbers" then [ (fun () -> num_compare ctx env g) ] else [])
     @ List.map
         (fun op () ->
-           let s = fo_env_ty ctx env in
-           [%string "(%{e env s} %{op} %{e env s})"])
+           let a, b = same_fo () in
+           [%string "(%{a} %{op} %{b})"])
         [ "="; "<>"; "<"; "<="; ">"; ">=" ]
     @ [ (fun () ->
-          let s = fo_env_ty ctx env in
-          [%string "(List.mem %{e env s} %{e env (List s)})"])
+          let lists =
+            candidates ctx env (function
+              | List s as t when first_order s -> Some t
+              | _ -> None)
+          in
+          let ls, l = g.free ~candidates:lists env (List_of (Any fo)) in
+          [%string "(List.mem %{e env (elem_of ls)} %{l})"])
       ; (fun () ->
-          let s = env_ty ctx env elem in
+          let ls, l = list () in
+          let s = elem_of ls in
           let x = fresh ctx "x" in
           [%string
             "(List.exists (fun (%{x} : %{s#Ty}) -> %{e (bind (closure env) x s) Bool}) \
-             %{e env (List s)})"])
+             %{l})"])
       ]
   | Float ->
     List.map (fun op -> bin op Float) [ "+."; "-."; "/." ]
@@ -87,7 +105,7 @@ let specific ctx env ty e =
         [ "Float.min"; "Float.max"; "Float.rem" ]
     @ [ call "Float.of_int" [ Int ]; call "Float.fma" [ Float; Float; Float ] ]
     @ (if !ox_mode then [ call "box_float" [ float_u ] ] else [])
-    @ if !ox_mode && on "numbers" then [ converted ctx env Float e ] else []
+    @ if !ox_mode && on "numbers" then [ converted env Float g ] else []
   | Char ->
     [ (fun () -> [%string "(Char.chr (%{e env Int} land 255))"])
     ; call "Char.lowercase_ascii" [ Char ]
@@ -124,7 +142,7 @@ let specific ctx env ty e =
           in
           [%string "(%{op} %{e env Int64} (%{e env Int} land 63))"])
       ]
-    @ if !ox_mode && on "numbers" then [ converted ctx env Int64 e ] else []
+    @ if !ox_mode && on "numbers" then [ converted env Int64 g ] else []
   | Str ->
     [ bin "^" Str
     ; call "ssub" [ Str; Int; Int ]
@@ -196,8 +214,8 @@ let specific ctx env ty e =
       (fun f -> call f [ float_u; float_u ])
       [ "fu_add"; "fu_sub"; "fu_mul"; "fu_div" ]
     @ [ call "fu_sqrt" [ float_u ]; call "unbox_float" [ Float ] ]
-    @ if on "numbers" then num_ops ctx env ty e else []
-  | Num _ | U _ -> num_ops ctx env ty e
+    @ if on "numbers" then num_ops ctx env ty g else []
+  | Num _ | U _ -> num_ops ctx env ty g
   | UTuple ts ->
     [ (fun () -> [%string {|#(%{String.concat ", " (List.map (e env) ts)})|}]) ]
   | Or_null t -> [ (fun () -> "Null"); (fun () -> [%string "(This %{e env t})"]) ]
@@ -270,9 +288,9 @@ let specific ctx env ty e =
     ; call "List.rev" [ ty ]
     ; bin "@" ty
     ; (fun () ->
-        let s = env_ty ctx env elem in
+        let ls, l = list () in
+        let s = elem_of ls in
         let x = fresh ctx "x" in
-        let l = e env (List s) in
         let body = e (bind (closure env) x s) t in
         [%string "(List.map (fun (%{x} : %{s#Ty}) -> %{body}) %{l})"])
     ; (fun () ->
@@ -297,13 +315,18 @@ let specific ctx env ty e =
           "(List.find_opt (fun (%{x} : %{t#Ty}) -> %{e (bind (closure env) x t) Bool}) \
            %{e env (List t)})"])
     ; (fun () ->
-        let s =
-          env_ty ctx env (function
-            | Option s -> Some s
+        let options =
+          candidates ctx env (function
+            | Option _ as t -> Some t
             | _ -> None)
         in
+        let os, o = g.free ~candidates:options env (Option_of (Any any)) in
+        let s =
+          match os with
+          | Option s -> s
+          | _ -> assert false
+        in
         let x = fresh ctx "x" in
-        let o = e env (Option s) in
         let body = e (bind (closure env) x s) t in
         [%string "(Option.map (fun (%{x} : %{s#Ty}) -> %{body}) %{o})"])
     ]

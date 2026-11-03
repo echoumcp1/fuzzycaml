@@ -33,18 +33,12 @@ let () =
     if List.length backends < 2 then failwith "need at least two backends";
     at_exit (fun () ->
       Printf.printf
-        "ran %d programs, %d timed out, %d hit known bugs\n%!"
+        "ran %d programs, compiled %d, %d timed out, %d hit known bugs\n%!"
         !cases
+        !compiled
         !timeouts
         !known);
     let effect_syntax = effect_syntax ~ox backends in
     Printf.printf "effect syntax: %b\n%!" effect_syntax;
-    let run ?failure_blobs () =
-      run_hegel_test
-        ~settings
-        ~database_key:"fuzzycaml"
-        ?failure_blobs
-        (check ~ox ~effect_syntax backends)
-    in
-    Lift.run ~generate:(fun tc -> ignore (generate ~ox ~effect_syntax backends tc)) run)
+    run_hegel_test ~settings ~database_key:"fuzzycaml" (check ~ox ~effect_syntax backends))
 ;;

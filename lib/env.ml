@@ -29,26 +29,37 @@ let immediate = function
 
 (* Usually a type found by [extract] in a variable in scope, so that eliminators
    use computed values rather than literals. *)
-let from_env ctx env extract fallback =
+let candidates ctx env extract =
   let all = env.vars @ env.locals in
-  let unused = unused ctx all in
   let found vars = List.filter_map (fun (_, t) -> extract t) vars in
-  (* Prefer unused variables, so that parameters get used. *)
-  match found unused, found all with
-  | found, _ when found <> [] && flip ~p:0.7 ctx -> pick ctx found
-  | _, found when found <> [] && flip ~p:0.7 ctx -> pick ctx found
-  | _ -> fallback ()
-;;
-
-let env_ty ctx env extract = from_env ctx env extract (fun () -> any_ty ctx)
-
-let elem = function
-  | List s -> Some s
-  | _ -> None
+  match found (unused ctx all) with
+  | [] -> found all
+  | found -> found
 ;;
 
 let some_ty t = Some t
 
-let fo_env_ty ctx env =
-  from_env ctx env (fun t -> if first_order t then Some t else None) (fun () -> fo_ty ctx)
+let lists = function
+  | List _ as t -> Some t
+  | _ -> None
 ;;
+
+let elem_of = function
+  | List s -> s
+  | _ -> invalid_arg "elem_of"
+;;
+
+let first_order_ty t = if first_order t then Some t else None
+
+(* [e] at a fixed type; [free] draws the type, preferring [candidates];
+   [scrutinee] may be a local variable or [alt]'s expression instead. *)
+type gen =
+  { e : env -> ty -> string
+  ; free : ?candidates:ty list -> ?p:float -> env -> shape -> ty * string
+  ; scrutinee :
+      ?candidates:ty list
+      -> ?alt:(ty -> (unit -> string) option)
+      -> env
+      -> shape
+      -> ty * string * bool
+  }

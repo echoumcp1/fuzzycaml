@@ -1,18 +1,19 @@
 open Ctx
 open Env
+open Gen_ty
 
 let handler_setup ctx env =
-  let handled = List.filter (fun _ -> flip ctx) ctx.effects in
+  let handled = some ctx 3 ctx.effects in
   let handled = if handled = [] then [ List.hd ctx.effects ] else handled in
-  let b =
-    from_env
-      ctx
-      { env with vars = List.map (fun (con, _, result) -> con, result) handled }
-      some_ty
-      (fun () -> fo_env_ty ctx env)
-  in
   let catch = flip ~p:0.3 ctx in
-  handled, b, catch, { env with effs = handled @ env.effs; in_try = env.in_try || catch }
+  handled, catch, { env with effs = handled @ env.effs; in_try = env.in_try || catch }
+;;
+
+(* The handled computation, of a type drawn with it: the result type of a
+   handled effect or the type of a variable in scope, nearly always. *)
+let computation ctx env handled g =
+  let results = List.map (fun (_, _, result) -> result) handled in
+  g.free ~candidates:(results @ candidates ctx env first_order_ty) ~p:0.95 env (Any fo)
 ;;
 
 (* The bound value, continuation and body of a handler's arm for one effect. *)
@@ -49,8 +50,9 @@ let perform_let ctx env e (con, arg, result) ty =
   [%string "(let %{y} : %{result#Ty} = Effect.perform (%{con} %{e env arg}) in %{body})"]
 ;;
 
-let handler ctx env ty e =
-  let handled, b, catch, body_env = handler_setup ctx env in
+let handler ctx env ty g =
+  let e = g.e in
+  let handled, catch, body_env = handler_setup ctx env in
   let x = fresh ctx "x" in
   let exnc = exnc env ty e catch in
   let arm ((con, _, _) as eff) =
@@ -60,23 +62,33 @@ let handler ctx env ty e =
        %{body})"]
   in
   let arms = String.concat " " (List.map arm handled) in
-  let ret = e (bind env x b) ty in
-  let body =
-    let eff = pick ctx handled in
-    if flip ctx then perform_let ctx body_env e eff b else e body_env b
+  let b, body =
+    let con, arg, result = pick ctx handled in
+    if flip ctx
+    then (
+      let y = fresh ctx "y" in
+      let b, inner = computation ctx (bind body_env y result) handled g in
+      ( b
+      , [%string
+          "(let %{y} : %{result#Ty} = Effect.perform (%{con} %{e body_env arg}) in \
+           %{inner})"] ))
+    else computation ctx body_env handled g
   in
+  let ret = e (bind env x b) ty in
   [%string
     "(Effect.Deep.match_with (fun () -> %{body}) () { Effect.Deep.retc = (fun (%{x} : \
      %{b#Ty}) -> %{ret}); exnc = %{exnc}; effc = (fun (type a) (eff : a Effect.t) -> \
      match eff with %{arms} | _ -> None) })"]
 ;;
 
-let shallow ctx env ty e =
-  let handled, b, catch, body_env = handler_setup ctx env in
+let shallow ctx env ty g =
+  let e = g.e in
+  let handled, catch, body_env = handler_setup ctx env in
   let go = fresh ctx "go" in
   let tv = fresh ctx "c" in
   let x = fresh ctx "x" in
   let exnc = exnc env ty e catch in
+  let b, body = computation ctx body_env handled g in
   let arm ((con, _, _) as eff) =
     let resume k v _ = [%string "%{go} %{k} %{v}"] in
     let v, k, body = arm_body ctx env ty e ~resume ~discontinue:false eff in
@@ -84,7 +96,6 @@ let shallow ctx env ty e =
       "| %{con} %{v} -> Some (fun (%{k} : (a, %{b#Ty}) Effect.Shallow.continuation) -> \
        %{body})"]
   in
-  let body = e body_env b in
   let arms = String.concat " " (List.map arm handled) in
   let ret = e (bind env x b) ty in
   [%string
@@ -95,9 +106,11 @@ let shallow ctx env ty e =
      (fun () -> %{body})) ())"]
 ;;
 
-let effect_match ctx env ty e =
-  let handled, b, catch, body_env = handler_setup ctx env in
+let effect_match ctx env ty g =
+  let e = g.e in
+  let handled, catch, body_env = handler_setup ctx env in
   let x = fresh ctx "x" in
+  let b, body = computation ctx body_env handled g in
   let arm ((con, _, _) as eff) =
     let v, k, body = arm_body ctx env ty e ~resume:deep_resume ~discontinue:true eff in
     [%string "| effect %{con} %{v}, %{k} -> %{body}"]
@@ -105,5 +118,5 @@ let effect_match ctx env ty e =
   let exit_arm = if catch then [%string " | exception Exit -> %{e env ty}"] else "" in
   let arms = String.concat " " (List.map arm handled) in
   let ret = e (bind env x b) ty in
-  [%string "(match %{e body_env b} with | %{x} -> %{ret} %{arms}%{exit_arm})"]
+  [%string "(match %{body} with | %{x} -> %{ret} %{arms}%{exit_arm})"]
 ;;

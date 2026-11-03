@@ -3,24 +3,38 @@ open Ctx
 open Gen_ty
 open Env
 
-let lets e env vars =
-  String.concat
-    ""
-    (List.map (fun (x, t) -> [%string "let %{x} : %{t#Ty} = %{e env t} in "]) vars)
+let bindings ctx g env n prm prefix =
+  List.init n (fun _ ->
+    let t, rhs = g.free env (Any prm) in
+    fresh ctx (prefix t), t, rhs)
 ;;
 
+let lets vars =
+  String.concat
+    ""
+    (List.map (fun (x, t, rhs) -> [%string "let %{x} : %{t#Ty} = %{rhs} in "]) vars)
+;;
+
+let types vars = List.map (fun (x, t, _) -> x, t) vars
+
 (* Many ints and floats live across an opaque call, so some must be spilled. *)
-let pressure ctx env ty e =
+let pressure ctx env ty g =
+  let e = g.e in
   let n = int_in ctx 8 20 in
   let vars =
-    List.init n (fun _ ->
-      let t = if flip ctx then Int else Float in
-      fresh ctx (if t = Int then "i" else "f"), t)
+    bindings
+      ctx
+      g
+      env
+      n
+      { any with only = Some [ Int; Float ] }
+      (fun t -> if t = Int then "i" else "f")
   in
+  let vars' = types vars in
   let k = fresh ctx "k" in
-  let env' = bind_all (bind env k Int) vars in
+  let env' = bind_all (bind env k Int) vars' in
   let sum t op zero =
-    match List.filter (fun (_, t') -> t' = t) vars with
+    match List.filter (fun (_, t') -> t' = t) vars' with
     | [] -> zero
     | xs -> String.concat op (List.map fst xs)
   in
@@ -29,38 +43,45 @@ let pressure ctx env ty e =
   let else_ = e env' ty in
   let then_ = e env' ty in
   [%string
-    "(%{lets e env vars} let %{k} = (Sys.opaque_identity succ) %{e env Int} in if \
-     %{ints} = %{k} || %{floats} > float_of_int %{k} then %{then_} else %{else_})"]
+    "(%{lets vars} let %{k} = (Sys.opaque_identity succ) %{e env Int} in if %{ints} = \
+     %{k} || %{floats} > float_of_int %{k} then %{then_} else %{else_})"]
 ;;
 
 (* More int and float parameters than arm64 passes in registers, in a
    function that calls itself in tail position. Arguments are let-bound
    because their evaluation order is unspecified. *)
-let many_args ctx env ty e =
+let many_args ctx env ty g =
+  let e = g.e in
   let go = fresh ctx "go" in
   let n = fresh ctx "n" in
-  let params =
-    List.init (int_in ctx 9 14) (fun _ ->
-      ( fresh ctx "a"
-      , choose ctx [ (fun () -> Int); (fun () -> Float); (fun () -> fo_ty ctx) ] ))
-  in
   let env = closure env in
+  let m = fresh ctx "m" in
+  (* A parameter's type is drawn with its argument in the outer call: an int or
+     a float two times in three. *)
+  let outer =
+    List.init (int_in ctx 9 14) (fun _ ->
+      let t, v = g.free ~candidates:[ Int; Float ] ~p:0.67 env (Any fo) in
+      fresh ctx "a", fresh ctx "b", t, v)
+  in
+  let params = List.map (fun (x, _, t, _) -> x, t) outer in
   let inner = bind_all (bind env n Int) params in
   (* recursive calls mostly pass parameters through, to keep programs small *)
-  let arg env t =
+  let arg t =
     let same = List.filter (fun (_, t') -> t' = t) params in
-    if env != inner || same = [] || flip ~p:0.3 ctx then e env t else fst (pick ctx same)
+    if flip ~p:0.3 ctx then e inner t else fst (pick ctx same)
   in
-  let args env first =
-    let bound = List.map (fun (_, t) -> fresh ctx "b", t, arg env t) params in
-    ( String.concat
-        ""
-        (List.map (fun (y, t, v) -> [%string "let %{y} : %{t#Ty} = %{v} in "]) bound)
-    , String.concat " " (first :: List.map (fun (y, _, _) -> y) bound) )
+  let bound = List.map (fun (_, t) -> fresh ctx "b", t, arg t) params in
+  let lets bound =
+    String.concat
+      ""
+      (List.map (fun (y, t, v) -> [%string "let %{y} : %{t#Ty} = %{v} in "]) bound)
   in
-  let m = fresh ctx "m" in
-  let outer_lets, outer = args env m in
-  let inner_lets, again = args inner [%string "(%{n} - 1)"] in
+  let outer_lets = lets (List.map (fun (_, y, t, v) -> y, t, v) outer) in
+  let outer = String.concat " " (m :: List.map (fun (_, y, _, _) -> y) outer) in
+  let inner_lets = lets bound in
+  let again =
+    String.concat " " ([%string "(%{n} - 1)"] :: List.map (fun (y, _, _) -> y) bound)
+  in
   let head =
     choose ctx [ (fun () -> go); (fun () -> [%string "(%{go} [@inlined never])"]) ]
   in
@@ -78,12 +99,12 @@ let many_args ctx env ty e =
 
 (* Fresh allocations live across a collection and are used afterward, so the GC
    must find them wherever the backend keeps them. *)
-let gc ctx env ty e =
-  let vars = List.init (int_in ctx 2 6) (fun _ -> fresh ctx "g", fo_ty ctx) in
+let gc ctx env ty g =
+  let vars = bindings ctx g env (int_in ctx 2 6) fo (fun _ -> "g") in
   let gc =
     pick ctx [ "Gc.minor ()"; "Gc.minor ()"; "Gc.full_major ()"; "Gc.compact ()" ]
   in
-  [%string "(%{lets e env vars}%{gc}; %{e (bind_all env vars) ty})"]
+  [%string "(%{lets vars}%{gc}; %{g.e (bind_all env (types vars)) ty})"]
 ;;
 
 (* A string read at an offset inside the string's padding. *)
