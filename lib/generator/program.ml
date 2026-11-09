@@ -135,14 +135,25 @@ let declare_types ctx items ~ox =
 ;;
 
 (* Callbacks the runtime runs at allocations and major cycles, including in the
-   middle of an effect operation. They grow the current stack and change
-   nothing. Memprof fails on 5.0 to 5.2. *)
+   middle of an effect operation. They grow the current stack, and inside
+   [attempt] the first one raises [Sys.Break], after which [attempt] runs [f]
+   again. [f] is pure, so where the exception hit does not change the result.
+   Memprof fails on 5.0 to 5.2. *)
 let interrupt_callbacks ctx items =
   let depth = pick ctx [ 10; 1000; 100000 ] in
-  (* While armed, a callback raises [Sys.Break] once, so [attempt] runs [f] again.
-     [f] is pure, so where the exception hit does not change the result. OxCaml
-     raises an exception from a callback only inside [Sys.with_async_exns]. *)
-  let run_f = if !ox_mode then ox_syntax "Sys.with_async_exns f" "f ()" else "f ()" in
+  let attempt_raising run =
+    [%string
+      "let attempt f = armed := true; match %{run} with v -> armed := false; v | \
+       exception Sys.Break -> f () | exception e -> armed := false; raise e\n"]
+  in
+  (* OxCaml raises an exception from a callback only inside
+     [Sys.with_async_exns], which upstream lacks. The erased version is built by
+     both, so there [attempt] never arms the callbacks. *)
+  let attempt =
+    if !ox_mode
+    then ox_syntax (attempt_raising "Sys.with_async_exns f") "let attempt f = f ()\n"
+    else attempt_raising "f ()"
+  in
   add_item
     items
     [%string
@@ -150,8 +161,7 @@ let interrupt_callbacks ctx items =
        let armed = ref false\n\
        let interrupt () = ignore (Sys.opaque_identity (interrupt %{depth#Int})); if \
        !armed then (armed := false; raise Sys.Break)\n\
-       let attempt f = armed := true; match %{run_f} with v -> armed := false; v | \
-       exception Sys.Break -> f () | exception e -> armed := false; raise e\n"];
+       %{attempt}"];
   if flip ctx
   then (
     let rate = pick ctx [ "0.001"; "0.01"; "0.1"; "1." ] in
