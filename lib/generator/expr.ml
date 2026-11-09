@@ -49,7 +49,7 @@ let rec body ctx env ty depth =
       env.vars
   in
   let use_other = flip ~p:(if other_vars = [] then 0. else 0.3) ctx in
-  let performs = List.filter (fun (_, _, result) -> result = ty) env.handled_effects in
+  let performs = List.filter (fun effect_ -> effect_.result = ty) env.handled_effects in
   let raises = flip ~p:(if env.in_try then 0.15 else 0.) ctx in
   let performs_one = flip ~p:(if performs = [] then 0. else 0.2) ctx in
   let performs_let = flip ~p:(if env.handled_effects = [] then 0. else 0.35) ctx in
@@ -59,7 +59,7 @@ let rec body ctx env ty depth =
   then leaf ()
   else if performs_one
   then (
-    let constructor, arg, _ = pick ctx performs in
+    let { constructor; arg; _ } = pick ctx performs in
     [%string "(Effect.perform (%{constructor} %{expr env arg}))"])
   else if performs_let
   then Effects.perform_let ctx env expr (pick ctx env.handled_effects) ty
@@ -75,7 +75,7 @@ let rec body ctx env ty depth =
       (* A comparison with a literal is almost always false, so the result rarely
          depends on [x]; a bit of its printed form is either about half the time. *)
       let condition =
-        if (not !quiet) && (is_num var_ty || not (restricted var_ty)) && flip ctx
+        if !checks_on && (is_num var_ty || not (restricted var_ty)) && flip ctx
         then
           [%string
             "Hashtbl.hash (%{Printer.printer var_ty} %{use (var, var_ty)}) land 1 = 0"]
@@ -113,7 +113,7 @@ and at ctx env ?candidates ?p ?(local = false) ?alt shape depth =
             && (not env.in_try)
             && (not env.in_fun)
             && env.handled_effects = []
-            && (not !quiet)
+            && !checks_on
             && flip ~p:0.1 ctx
           then (
             let observed = fresh ctx "o" in
@@ -123,15 +123,19 @@ and at ctx env ?candidates ?p ?(local = false) ?alt shape depth =
           else code
         in
         let code =
-          if !props && (not !quiet) && flip ~p:0.1 ctx
+          if !props && !checks_on && flip ~p:0.1 ctx
           then (
             let key = fresh ctx "emi" in
-            let replacement = literal ctx ty in
-            if not !erase then Emi.regions := (key, replacement) :: !Emi.regions;
+            let replacement =
+              without_checks (fun () -> (gen ctx (depth - 1)).expr env ty)
+            in
+            let prunable = flip ctx in
+            if not !erase
+            then Emi.regions := { Emi.key; replacement; prunable } :: !Emi.regions;
             Markers.region key code)
           else code
         in
-        if !props && (not !quiet) && flip ~p:0.1 ctx
+        if !props && !checks_on && flip ~p:0.1 ctx
         then ty, Wrappers.neutral ctx env ty (gen ctx (depth - 1)) code, false
         else ty, code, false))
 

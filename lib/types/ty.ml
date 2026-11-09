@@ -40,14 +40,28 @@ and unboxed_number =
 
 let unboxed_float = Unboxed UFloat
 
+(* An effect declared as [type _ Effect.t += Constructor : arg -> result Effect.t]. *)
+type effect_decl =
+  { constructor : string
+  ; arg : ty
+  ; result : ty
+  }
+
 (* Declared types refer only to earlier ones and hold only first-order
    values. *)
+type record_field =
+  { name : string
+  ; ty : ty
+  ; is_mutable : bool
+  }
+
 type decl =
-  | Record of (string * ty * bool) list
+  | Record of record_field list
   | Variant of (string * ty list) list
   | URecord of (string * ty) list
 
-let field_types fields = List.map (fun (field, field_ty, _) -> field, field_ty) fields
+(* A record's fields as names and types, the form [URecord] keeps them in. *)
+let field_types fields = List.map (fun field -> field.name, field.ty) fields
 
 let num_name = function
   | Int -> "int"

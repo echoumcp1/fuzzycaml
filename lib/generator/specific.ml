@@ -447,8 +447,8 @@ let named_forms ctx env ty gen decl =
     let field_values_expr () = field_values (expr env) (field_types fields) in
     [ (fun () -> [%string "{ %{field_values_expr ()} }"])
     ; (fun () ->
-        let field, field_ty, _ = pick ctx fields in
-        [%string "{ %{expr env ty} with %{field} = %{expr env field_ty} }"])
+        let field = pick ctx fields in
+        [%string "{ %{expr env ty} with %{field.name} = %{expr env field.ty} }"])
     ]
     @ List.filter_map
         (fun (boxed, unboxed) ->
@@ -459,8 +459,8 @@ let named_forms ctx env ty gen decl =
                (fun () ->
                  let source = fresh ctx "s" in
                  let dot = ox_syntax ".#" "." in
-                 let copy_field (field, _, _) =
-                   [%string "%{field} = %{source}%{dot}u%{field}"]
+                 let copy_field field =
+                   [%string "%{field.name} = %{source}%{dot}u%{field.name}"]
                  in
                  let fields = String.concat "; " (List.map copy_field fields) in
                  [%string
@@ -469,24 +469,23 @@ let named_forms ctx env ty gen decl =
     @
     (* Only a record the expression allocates is mutated, and only before it
           is returned. *)
-    (match List.filter (fun (_, _, is_mutable) -> is_mutable) fields with
+    (match List.filter (fun field -> field.is_mutable) fields with
       | [] -> []
       | mutables ->
         [ (fun () ->
             let record = fresh ctx "r" in
             let loop_var = fresh ctx "i" in
-            let field, field_ty, _ = pick ctx mutables in
+            let field = pick ctx mutables in
             let loop_env =
               List.fold_left
-                (fun env (other, other_ty, _) ->
-                   bind env [%string "%{record}.%{other}"] other_ty)
+                (fun env other -> bind env [%string "%{record}.%{other.name}"] other.ty)
                 (bind env loop_var Int)
                 fields
             in
             [%string
               "(let %{record} = { %{field_values_expr ()} } in for %{loop_var} = 0 to \
-               (%{expr env Int} land 7) do %{record}.%{field} <- %{expr loop_env \
-               field_ty} done; %{record})"])
+               (%{expr env Int} land 7) do %{record}.%{field.name} <- %{expr loop_env \
+               field.ty} done; %{record})"])
         ])
 ;;
 

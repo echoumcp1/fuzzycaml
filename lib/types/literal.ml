@@ -237,7 +237,7 @@ let rec literal ctx ty =
   | Option elem_ty ->
     if flip ctx then [%string "(Some %{literal ctx elem_ty})"] else "None"
   | Pair (first, second) -> [%string "(%{literal ctx first}, %{literal ctx second})"]
-  | Arrow (first, second) when (not !quiet) && same_repr first && flip ctx ->
+  | Arrow (first, second) when !checks_on && same_repr first && flip ctx ->
     (* So that the argument decides the result. *)
     [%string
       "(fun (x : %{first#Ty}) -> if Hashtbl.hash x land 1 = 0 then %{literal ctx second} \

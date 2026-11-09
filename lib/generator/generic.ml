@@ -288,20 +288,20 @@ let field_reads env ty gen decls =
        match decl_def with
        | Record fields ->
          List.filter_map
-           (fun (field, field_ty, _) ->
-              if field_ty = ty
+           (fun (field : record_field) ->
+              if field.ty = ty
               then
                 Some
                   (fun () ->
                     (* A local record's field is local unless it is immediate. *)
                     let record =
-                      if immediate field_ty
+                      if immediate field.ty
                       then (
                         let _, record, _ = gen.scrutinee env (Is (Named decl)) in
                         record)
                       else gen.expr env (Named decl)
                     in
-                    [%string "(%{record}).%{field}"])
+                    [%string "(%{record}).%{field.name}"])
               else None)
            fields
        | URecord fields ->

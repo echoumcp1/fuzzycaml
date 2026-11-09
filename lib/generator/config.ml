@@ -8,15 +8,15 @@ let effect_syntax_on = ref false
    several. *)
 let props = ref false
 
-(* Set while generating junk, which is not wrapped, so programs stay small, and
-   the body of a [@zero_alloc] function, which wrappers or checks would make
-   allocate. *)
-let quiet = ref false
+(* Whether generated code may contain wrappers, EMI regions, observed values and
+   hashed conditions. They are left out of junk, to keep programs small, and of
+   the body of a [@zero_alloc] function, which they would make allocate. *)
+let checks_on = ref true
 
-let quietly f =
-  let old = !quiet in
-  quiet := true;
-  Fun.protect ~finally:(fun () -> quiet := old) f
+let without_checks f =
+  let old = !checks_on in
+  checks_on := false;
+  Fun.protect ~finally:(fun () -> checks_on := old) f
 ;;
 
 (* Whether programs are printed without OxCaml's modes, layouts and other

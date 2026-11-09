@@ -8,7 +8,7 @@ type ctx =
   { tc : test_case
   ; mutable next : int
   ; mutable decls : decl array
-  ; mutable effects : (string * ty * ty) list
+  ; mutable effects : effect_decl list
   ; used : (string, unit) Hashtbl.t
   }
 

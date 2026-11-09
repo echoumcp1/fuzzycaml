@@ -4,6 +4,16 @@ open Ctx
 open Gen_ty
 open Env
 
+(* A [for] clause of a comprehension, with the bindings it needs before the
+   comprehension and, for the erased version, the list it ranges over. *)
+type clause =
+  { bindings : string
+  ; iterator : string
+  ; erased_source : string
+  ; var : string
+  ; var_ty : ty
+  }
+
 (* Comprehensions over ranges and lists or arrays, with their bounds and sources
    bound first so that every version evaluates them once and in the same order. The
    erased version builds the same elements with List. *)
@@ -17,11 +27,12 @@ let comprehensions ctx env ty gen =
     | Some (container, to_list) when flip ctx ->
       let elem_ty = pick ctx (scanned ()) in
       let source = fresh ctx "src" in
-      ( [%string "let %{source} = %{expr env (container elem_ty)} in "]
-      , [%string "for %{var} in %{source}"]
-      , to_list source
-      , var
-      , elem_ty )
+      { bindings = [%string "let %{source} = %{expr env (container elem_ty)} in "]
+      ; iterator = [%string "for %{var} in %{source}"]
+      ; erased_source = to_list source
+      ; var
+      ; var_ty = elem_ty
+      }
     | _ ->
       let low = fresh ctx "lo" in
       let high = fresh ctx "hi" in
@@ -33,31 +44,33 @@ let comprehensions ctx env ty gen =
       let count = [%string "(max 0 (%{high} - %{low} + 1))"] in
       if flip ctx
       then
-        ( bounds
-        , [%string "for %{var} = %{low} to %{high}"]
-        , [%string "(List.init %{count} (fun k -> %{low} + k))"]
-        , var
-        , Int )
+        { bindings = bounds
+        ; iterator = [%string "for %{var} = %{low} to %{high}"]
+        ; erased_source = [%string "(List.init %{count} (fun k -> %{low} + k))"]
+        ; var
+        ; var_ty = Int
+        }
       else
-        ( bounds
-        , [%string "for %{var} = %{high} downto %{low}"]
-        , [%string "(List.init %{count} (fun k -> %{high} - k))"]
-        , var
-        , Int )
+        { bindings = bounds
+        ; iterator = [%string "for %{var} = %{high} downto %{low}"]
+        ; erased_source = [%string "(List.init %{count} (fun k -> %{high} - k))"]
+        ; var
+        ; var_ty = Int
+        }
   in
   (* The bindings before it, its clauses for OxCaml, and the erased list. *)
   let build iter elem_ty =
     let clauses = List.init (int_in ctx 1 2) (fun _ -> clause iter) in
     let body_env =
       List.fold_left
-        (fun env (_, _, _, var, elem_ty) -> bind env var elem_ty)
+        (fun env clause -> bind env clause.var clause.var_ty)
         { (closure env) with handled_effects = [] }
         clauses
     in
     let body = expr body_env elem_ty in
     let condition = if flip ctx then Some (expr body_env Bool) else None in
     let rec erased = function
-      | [ (_, _, source, var, elem_ty) ] ->
+      | [ { erased_source = source; var; var_ty = elem_ty; _ } ] ->
         (match condition with
          | Some condition_code ->
            [%string
@@ -65,20 +78,20 @@ let comprehensions ctx env ty gen =
               then Some (%{body}) else None) %{source})"]
          | None ->
            [%string "(List.map (fun (%{var} : %{elem_ty#Ty}) -> %{body}) %{source})"])
-      | (_, _, source, var, elem_ty) :: rest ->
+      | { erased_source = source; var; var_ty = elem_ty; _ } :: rest ->
         [%string
           "(List.concat_map (fun (%{var} : %{elem_ty#Ty}) -> %{erased rest}) %{source})"]
       | [] -> assert false
     in
     let ox =
       [%string "(%{body}) "]
-      ^ String.concat " " (List.map (fun (_, clause, _, _, _) -> clause) clauses)
+      ^ String.concat " " (List.map (fun clause -> clause.iterator) clauses)
       ^ Option.fold
           ~none:""
           ~some:(fun condition_code -> [%string " when (%{condition_code})"])
           condition
     in
-    ( String.concat "" (List.map (fun (lets, _, _, _, _) -> lets) clauses)
+    ( String.concat "" (List.map (fun clause -> clause.bindings) clauses)
     , ox
     , erased clauses )
   in

@@ -30,7 +30,7 @@ let decl_names index decl =
   [%string "t%{index#Int}"]
   ::
   (match decl with
-   | Record fields -> List.map (fun (field, _, _) -> field) fields
+   | Record fields -> List.map (fun field -> field.name) fields
    | URecord fields -> List.map fst fields
    | Variant constructors ->
      List.map (fun (constructor, _) -> without_backquote constructor) constructors)
@@ -73,8 +73,7 @@ let declare ctx items decl =
   := Array.append
        !not_first_order_decls
        [| (match decl with
-           | Record fields ->
-             List.exists (fun (_, field_ty, _) -> has_unboxed field_ty) fields
+           | Record fields -> List.exists (fun field -> has_unboxed field.ty) fields
            | URecord _ -> true
            | Variant constructors ->
              List.exists (fun (_, args) -> List.exists has_unboxed args) constructors)
@@ -110,7 +109,7 @@ let declare_types ctx items ~ox =
          declare
            ctx
            items
-           (URecord (List.map (fun (field, field_ty, _) -> "u" ^ field, field_ty) fields))
+           (URecord (List.map (fun field -> "u" ^ field.name, field.ty) fields))
        in
        unboxed_twins := (index, unboxed) :: !unboxed_twins
      | _ -> ());
@@ -169,7 +168,7 @@ let declare_effects ctx items =
          ~names:[ constructor ]
          [%string
            "type _ Effect.t += %{constructor} : %{arg#Ty} -> %{result#Ty} Effect.t\n"];
-       constructor, arg, result)
+       { constructor; arg; result })
 ;;
 
 (* Global atomics, which statements between the top-level values update. *)
