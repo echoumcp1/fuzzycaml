@@ -150,3 +150,42 @@ let effect_syntax ~ox backends =
 ;;
 
 let is_toplevel b = Filename.basename (List.hd b.argv) = "ocaml"
+
+(* Library features newer compilers add, each with a program that uses it. *)
+let probes =
+  [ ( "atomic_loc"
+    , "type r = { mutable a : int [@atomic] }\n\
+       let f r = Atomic.Loc.fetch_and_add [%atomic.loc r.a] 1" )
+  ; "atomic_array", "let f () = Atomic.Array.fetch_and_add (Atomic.Array.make 4 0) 1 2"
+  ; "popcount", "let f x = Int.popcount x + Int.leading_zeros x + Int.trailing_zeros x"
+  ]
+;;
+
+(* The probes that the ocamlc next to every backend's compiler accepts. *)
+let probe backends =
+  let dir = Filename.temp_dir "fuzzycaml" "probe" in
+  let file = Filename.concat dir "probe.ml" in
+  let bins =
+    List.sort_uniq
+      compare
+      (List.map (fun b -> Filename.dirname (List.hd b.argv)) backends)
+  in
+  let compiles source bin =
+    Out_channel.with_open_bin file (fun oc -> output_string oc source);
+    Sys.command
+      (Filename.quote_command
+         ~stdout:"/dev/null"
+         ~stderr:"/dev/null"
+         (Filename.concat bin "ocamlc")
+         [ "-c"; "-w"; "-a"; "-o"; Filename.concat dir "probe.cmo"; file ])
+    = 0
+  in
+  let found =
+    List.filter_map
+      (fun (name, source) ->
+         if List.for_all (compiles source) bins then Some name else None)
+      probes
+  in
+  ignore (Sys.command (Filename.quote_command "rm" [ "-rf"; dir ]));
+  found
+;;

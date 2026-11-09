@@ -59,6 +59,11 @@ let arr_get : type a. a aw -> a array -> int -> a = fun w a i ->
 let[@inline never] arr_poly n x = Array.make n x
 let[@inline never] arr_copy a = Array.map (fun x -> x) a
 |}
+  ^ (if has "atomic_loc"
+     then
+       "type atomics = { mutable ai : int [@atomic]; mutable ab : bool [@atomic]; \
+        mutable ap : int }\n"
+     else "")
   ^
   if !ox_mode
   then

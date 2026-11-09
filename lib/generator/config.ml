@@ -48,6 +48,10 @@ let all_features =
 let features = ref all_features
 let on feature = List.mem feature !features
 
+(* Library features that every backend's compiler has, found by [Backend.probe]. *)
+let available : string list ref = ref []
+let has feature = List.mem feature !available
+
 (* Variant constructors declared with an inline record. *)
 let inline_records : string list ref = ref []
 

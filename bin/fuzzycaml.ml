@@ -21,16 +21,19 @@ let () =
     }
   in
   if sample
-  then
+  then (
+    Config.available := probe (discover ~ox);
     run_hegel_test ~settings (fun tc ->
       print_endline (Program.program ~ox ~effect_syntax:(not ox) tc);
-      print_endline "(* ---- *)")
+      print_endline "(* ---- *)"))
   else (
     let backends = discover ~ox @ extra () in
     List.iter
       (fun b -> Printf.printf "backend %s: %s\n%!" b.name (String.concat " " b.argv))
       backends;
     if List.length backends < 2 then failwith "need at least two backends";
+    Config.available := probe backends;
+    Printf.printf "available: %s\n%!" (String.concat " " !Config.available);
     at_exit (fun () ->
       Printf.printf
         "ran %d programs, compiled %d, %d timed out, %d hit known bugs, %d rejected\n%!"

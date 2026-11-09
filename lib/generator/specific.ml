@@ -63,6 +63,12 @@ let int_forms ctx env gen =
     ; (fun () ->
         [%string "(sgn (Int64.unsigned_compare %{expr env Int64} %{expr env Int64}))"])
     ]
+  @ (if has "popcount"
+     then
+       List.map
+         (fun f -> call env gen f [ Int ])
+         [ "Int.popcount"; "Int.leading_zeros"; "Int.trailing_zeros" ]
+     else [])
   @ (if !ox_mode && on "numbers" then [ Numbers.converted env Int gen ] else [])
   @
   if on "arrays"
