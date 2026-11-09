@@ -95,6 +95,7 @@ let rec layer ctx env ty gen x =
       (indexed_decls ctx)
   in
   let wider_types = List.filter (lossless ty) numbers in
+  let closable = env.mutables = [] && env.locals = [] in
   choose
     ctx
     ([ (fun () ->
@@ -190,9 +191,9 @@ let rec layer ctx env ty gen x =
                "(let exception %{exn} of %{ty_name} in try raise (%{exn} %{x}) with \
                 %{exn} %{var} -> %{var})"])
          ]
-     (* A function cannot use a [let mutable] in scope. *)
+     (* A closure cannot use a [let mutable] or a local in scope. *)
      @ gate
-         (env.mutables = [])
+         closable
          [ (fun () ->
              let junk_ty, junk_expr = any_junk env (Any all_types) gen in
              carry
@@ -203,7 +204,7 @@ let rec layer ctx env ty gen x =
                x)
          ]
      @ gate
-         (value ty && env.mutables = [])
+         (value ty && closable)
          [ (fun () -> [%string "(Lazy.force (lazy %{x}))"])
          ; (fun () ->
              let module_ = fresh ctx "M" in
