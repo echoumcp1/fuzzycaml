@@ -5,9 +5,12 @@ open Check
 let () =
   let args = List.tl (Array.to_list Sys.argv) in
   let sample = List.mem "--sample" args in
-  let ox = List.mem "--ox" args in
+  Config.props := List.mem "--props" args;
+  let ox = List.mem "--ox" args || !Config.props in
   let test_cases =
-    match List.filter (fun a -> not (List.mem a [ "--sample"; "--ox" ])) args with
+    match
+      List.filter (fun a -> not (List.mem a [ "--sample"; "--ox"; "--props" ])) args
+    with
     | [ n ] -> int_of_string n
     | _ -> if sample then 5 else 200
   in
@@ -25,13 +28,28 @@ let () =
     Config.available := probe (discover ~ox);
     run_hegel_test ~settings (fun tc ->
       print_endline (Program.program ~ox ~effect_syntax:(not ox) tc);
+      if !Config.props
+      then (
+        print_endline "(* ==== erased *)";
+        print_endline (Program.erased ~ox ~effect_syntax:(not ox) tc));
       print_endline "(* ---- *)"))
   else (
-    let backends = discover ~ox @ extra () in
+    let backends =
+      if !Config.props
+      then
+        List.filter (fun b -> String.ends_with ~suffix:"-toggles" b.name) (discover ~ox)
+        @ List.filter
+            (fun b -> String.ends_with ~suffix:"/ocamlopt" b.name)
+            (discover ~ox:false)
+        @ extra ()
+      else discover ~ox @ extra ()
+    in
     List.iter
       (fun b -> Printf.printf "backend %s: %s\n%!" b.name (String.concat " " b.argv))
       backends;
-    if List.length backends < 2 then failwith "need at least two backends";
+    let needed = if !Config.props then 1 else 2 in
+    if List.length backends < needed
+    then failwith (Printf.sprintf "need at least %d backends" needed);
     Config.available := probe backends;
     Printf.printf "available: %s\n%!" (String.concat " " !Config.available);
     at_exit (fun () ->

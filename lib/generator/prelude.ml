@@ -67,7 +67,34 @@ let[@inline never] arr_copy a = Array.map (fun x -> x) a
         mutable ap : int }\n"
      else "")
   ^
-  if !ox_mode
+  if !ox_mode && !erase
+  then
+    (* The unboxed modules erased to their boxed counterparts. *)
+    {|let box_float x = x
+let unbox_float x = x
+let[@inline always] fu_add x y = x +. y
+let[@inline always] fu_sub x y = x -. y
+let[@inline always] fu_mul x y = Sys.opaque_identity (x *. y)
+let[@inline never] fu_div x y = x /. y
+let fu_sqrt x = sqrt x
+module F32 = Stdlib_stable.Float32
+module I8 = Stdlib_stable.Int8
+module I16 = Stdlib_stable.Int16
+module F32u = struct include F32 let of_float32 x = x let to_float32 x = x end
+module I8u = struct include I8 let of_int8 x = x let to_int8 x = x end
+module I16u = struct include I16 let of_int16 x = x let to_int16 x = x end
+module Iu = struct include Int let of_int x = x let to_int x = x end
+module Fu = struct include Float let of_float x = x let to_float x = x end
+module I32u = struct include Int32 let of_int32 x = x let to_int32 x = x end
+module I64u = struct include Int64 let of_int64 x = x let to_int64 x = x end
+module Natu = struct include Nativeint let of_nativeint x = x let to_nativeint x = x end
+external array_make : int -> 'a -> 'a array = "caml_make_vect"
+external array_get : 'a array -> int -> 'a = "%array_safe_get"
+external array_set : 'a array -> int -> 'a -> unit = "%array_safe_set"
+external array_length : 'a array -> int = "%array_length"
+|}
+    ^ saturating_conversion
+  else if !ox_mode
   then
     {|external box_float : float# -> (float[@local_opt]) = "%box_float"
 external unbox_float : (float[@local_opt]) -> float# = "%unbox_float"
@@ -92,6 +119,11 @@ external array_get : ('a : any mod separable). 'a array -> int -> 'a = "%array_s
 external array_set : ('a : any mod separable). 'a array -> int -> 'a -> unit = "%array_safe_set" [@@layout_poly]
 external array_length : ('a : any mod separable). 'a array -> int = "%array_length" [@@layout_poly]
 |}
+    ^ (if !props
+       then
+         {|external minor_words : unit -> float# = "caml_gc_minor_words" "caml_gc_minor_words_unboxed"
+|}
+       else "")
     ^ saturating_conversion
   else
     {|external array_make : int -> 'a -> 'a array = "caml_make_vect"

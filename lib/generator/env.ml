@@ -25,6 +25,19 @@ let escape env = { (closure env) with handled_effects = []; in_try = false }
 (* A lazy must not perform an effect, as that could leave it unfinished. *)
 let lazy_body env = { (escape env) with in_try = env.in_try }
 
+(* Code that cannot raise, perform, tick, or use a local or a mutable, so that
+   evaluating it anywhere does not change the output. Generated code only
+   mutates values it creates. *)
+let pure env =
+  { env with
+    locals = []
+  ; mutables = []
+  ; in_try = false
+  ; handled_effects = []
+  ; in_fun = true
+  }
+;;
+
 let immediate = function
   | Int | Bool -> true
   | _ -> false

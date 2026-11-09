@@ -41,21 +41,21 @@ let local_binding ctx env ty gen =
           let bound_ty = decode ctx boxed_types in
           ( bound_ty
           , match allocation bound_ty env with
-            | Some build -> "stack_ " ^ build ()
+            | Some build -> ox_syntax "stack_ " "" ^ build ()
             | None -> expr env bound_ty ))
       ; (fun () ->
           let bound_ty = decode ctx boxed_types in
           ( bound_ty
           , match allocation bound_ty (bind (closure env) param Int) with
             | Some build ->
-              let local = "exclave_ (stack_ " in
+              let local = ox_syntax "exclave_ (stack_ " "(" in
               [%string
                 "(let[@inline never] %{make} (%{param} : int) = %{local}%{build ()}) in \
                  %{make} %{expr env Int})"]
             | None -> expr env bound_ty ))
       ]
   in
-  let local = "local_ " in
+  let local = ox_syntax "local_ " "" in
   [%string
     "(let %{local}%{bound} : %{bound_ty#Ty} = %{source} in %{expr (bind_local env bound \
      bound_ty) ty})"]

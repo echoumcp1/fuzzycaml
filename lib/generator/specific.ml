@@ -458,7 +458,7 @@ let named_forms ctx env ty gen decl =
              Some
                (fun () ->
                  let source = fresh ctx "s" in
-                 let dot = ".#" in
+                 let dot = ox_syntax ".#" "." in
                  let copy_field (field, _, _) =
                    [%string "%{field} = %{source}%{dot}u%{field}"]
                  in

@@ -1,8 +1,19 @@
 let p = Printf.sprintf
 
+(* In props mode, which version of the generated program a backend compiles:
+   the original, the erased program checked to use no extensions and compiled
+   with few optimizations, the variant with neutral wrappers, or the original
+   with the regions it never evaluates replaced. *)
+type version =
+  | Original
+  | Erased
+  | Variant
+  | Emi
+
 type backend =
   { name : string
   ; argv : string list
+  ; version : version
   }
 
 let read_process cmd =
@@ -62,16 +73,21 @@ let discover ~ox =
         @ flags
       in
       let opt suffix flags =
-        { name = [%string "%{switch}/ocamlopt%{suffix}"]; argv = nat flags }
+        { name = [%string "%{switch}/ocamlopt%{suffix}"]
+        ; argv = nat flags
+        ; version = Original
+        }
       in
       let byte =
         { name = [%string "%{switch}/ocamlc"]
         ; argv = (ocamlc :: libs ".cma") @ [ "-runtime-variant"; "d" ]
+        ; version = Original
         }
       in
       let toplevel =
         { name = [%string "%{switch}/ocaml"]
         ; argv = Filename.concat bin "ocaml" :: libs ".cma"
+        ; version = Original
         }
       in
       if ox
@@ -135,6 +151,7 @@ let extra () =
             String.sub entry (i + 1) (String.length entry - i - 1)
             |> String.split_on_char ' '
             |> List.filter (( <> ) "")
+        ; version = Original
         })
 ;;
 

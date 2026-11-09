@@ -171,10 +171,10 @@ let rec show_ty = function
   | Named i -> [%string "t%{i#Int}"]
   | Num I32 -> "int32"
   | Num Nat -> "nativeint"
-  | Unboxed UFloat -> "float#"
+  | Unboxed UFloat -> ox_syntax "float#" "float"
   | (Num _ | Unboxed _) as t -> num_module t ^ ".t"
-  | UTuple ts -> "#" ^ "(" ^ String.concat " * " (List.map show_ty ts) ^ ")"
-  | Or_null t -> "(" ^ show_ty t ^ " or_null)"
+  | UTuple ts -> ox_syntax "#" "" ^ "(" ^ String.concat " * " (List.map show_ty ts) ^ ")"
+  | Or_null t -> "(" ^ show_ty t ^ ox_syntax " or_null)" " option)"
   | Arr t -> [%string "(%{show_ty t} array)"]
 ;;
 
@@ -195,6 +195,15 @@ let rec first_order = function
 let restricted = function
   | Unboxed _ | UTuple _ | Or_null _ -> true
   | Named i -> !unboxed_record_decls.(i)
+  | _ -> false
+;;
+
+(* Values of these types are represented the same in the erased version, so they
+   hash the same. *)
+let rec same_repr = function
+  | Int | Bool | Char | Str | Int64 | Float -> true
+  | List t | Option t -> same_repr t
+  | Pair (a, b) -> same_repr a && same_repr b
   | _ -> false
 ;;
 

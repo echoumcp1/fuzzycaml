@@ -309,7 +309,7 @@ let field_reads env ty gen decls =
            (fun (field, field_ty) ->
               if field_ty = ty
               then (
-                let dot = ".#" in
+                let dot = ox_syntax ".#" "." in
                 Some (fun () -> [%string "(%{gen.expr env (Named decl)})%{dot}%{field}"]))
               else None)
            fields

@@ -16,6 +16,7 @@ dune exec bin/fuzzycaml.exe -- [--sample] [--ox] [TEST_CASES]
 - `TEST_CASES`: number of programs to try (default 200, or 5 with `--sample`).
 - `--sample`: print the generated programs instead of testing them, separated by `(* ---- *)`.
 - `--ox`: generate OxCaml-only features and test only OxCaml (flambda2) switches.
+- `--props`: check one OxCaml compiler against itself: wrappers that keep a program's meaning, `[@zero_alloc]` functions that must not allocate, the program with OxCaml syntax and optimization hints erased (built with `-Oclassic`), and the program with code it never runs replaced must all print the same output.
 
 Environment variables:
 - `FUZZYCAML_SWITCHES=a,b`: use only these opam switches, in this order; the first is the reference.
@@ -57,6 +58,7 @@ lib/run/              backend discovery and flags, compiling and running, known 
 lib/types/            types, literals, patterns, printers, drawing types
 lib/generator/        generation state, prelude, expressions and whole programs
 lib/forms/            one module per generator feature
+lib/props/            versions of a program for --props: wrappers, EMI, zero_alloc tests
 run.sh, watch.sh      long runs
 ```
 

@@ -4,6 +4,26 @@ let ox_mode = ref false
 (* Whether the program may use OCaml 5.3's effect handler syntax. *)
 let effect_syntax_on = ref false
 
+(* Whether programs check properties of one compiler instead of comparing
+   several. *)
+let props = ref false
+
+(* Set while generating junk, which is not wrapped, so programs stay small, and
+   the body of a [@zero_alloc] function, which wrappers or checks would make
+   allocate. *)
+let quiet = ref false
+
+let quietly f =
+  let old = !quiet in
+  quiet := true;
+  Fun.protect ~finally:(fun () -> quiet := old) f
+;;
+
+(* Whether programs are printed without OxCaml's modes, layouts and other
+   extensions, which only change how values are represented. *)
+let erase = ref false
+let ox_syntax ox ocaml = if !erase then ocaml else ox
+
 (* Pairs (i, j) where polymorphic variant type [i] extends type [j]. *)
 let extended_variants : (int * int) list ref = ref []
 

@@ -62,7 +62,12 @@ let repeat_label = label "fuzzycaml.repeat"
 let expr_label = label "fuzzycaml.expr"
 
 let span ?(label = repeat_label) ctx f =
-  draw_silent ctx.tc (Generators.Ppx_internal.composite_with_label ~label (fun _ -> f ()))
+  if Draw.replaying ()
+  then f ()
+  else
+    draw_silent
+      ctx.tc
+      (Generators.Ppx_internal.composite_with_label ~label (fun _ -> f ()))
 ;;
 
 let repeat ctx lo hi f =

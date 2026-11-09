@@ -75,7 +75,7 @@ let rec body ctx env ty depth =
       (* A comparison with a literal is almost always false, so the result rarely
          depends on [x]; a bit of its printed form is either about half the time. *)
       let condition =
-        if (is_num var_ty || not (restricted var_ty)) && flip ctx
+        if (not !quiet) && (is_num var_ty || not (restricted var_ty)) && flip ctx
         then
           [%string
             "Hashtbl.hash (%{Printer.printer var_ty} %{use (var, var_ty)}) land 1 = 0"]
@@ -113,6 +113,7 @@ and at ctx env ?candidates ?p ?(local = false) ?alt shape depth =
             && (not env.in_try)
             && (not env.in_fun)
             && env.handled_effects = []
+            && (not !quiet)
             && flip ~p:0.1 ctx
           then (
             let observed = fresh ctx "o" in
@@ -121,7 +122,18 @@ and at ctx env ?candidates ?p ?(local = false) ?alt shape depth =
                %{observed}); %{observed})"])
           else code
         in
-        ty, code, false))
+        let code =
+          if !props && (not !quiet) && flip ~p:0.1 ctx
+          then (
+            let key = fresh ctx "emi" in
+            let replacement = literal ctx ty in
+            if not !erase then Emi.regions := (key, replacement) :: !Emi.regions;
+            Markers.region key code)
+          else code
+        in
+        if !props && (not !quiet) && flip ~p:0.1 ctx
+        then ty, Wrappers.neutral ctx env ty (gen ctx (depth - 1)) code, false
+        else ty, code, false))
 
 and gen ctx depth =
   { expr =

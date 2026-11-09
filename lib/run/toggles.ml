@@ -101,7 +101,8 @@ let with_toggles tc backends =
              flags
          in
          let argv = drop [ "-dcmm-invariants" ] b.argv in
-         { name = [%string {|%{b.name} %{String.concat " " flags}|}]
+         { b with
+           name = [%string {|%{b.name} %{String.concat " " flags}|}]
          ; argv = argv @ flags
          })
        else b)

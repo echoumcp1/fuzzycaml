@@ -27,7 +27,7 @@ let rec printer = function
         {| ^ ", " ^ |}
         (List.map2 (fun x t -> [%string "%{printer t} %{x}"]) xs ts)
     in
-    let pattern = "#" ^ "(" ^ String.concat ", " xs ^ ")" in
+    let pattern = Config.ox_syntax "#" "" ^ "(" ^ String.concat ", " xs ^ ")" in
     [%string {|(fun %{pattern} -> "#(" ^ %{shown} ^ ")")|}]
   | Named i -> [%string "show_t%{i#Int}"]
   | t when is_num t ->
@@ -56,7 +56,7 @@ let declaration ?parent i decl =
           fields
         && has Float
         && has unboxed_float
-      then " [@@flatten_floats]"
+      then Config.ox_syntax " [@@flatten_floats]" ""
       else ""
     in
     let decls = String.concat "; " (List.map field_decl fields) in
@@ -67,7 +67,7 @@ let declaration ?parent i decl =
   | URecord fields ->
     let field_decl (field, field_ty) = [%string "%{field} : %{field_ty#Ty}"] in
     let decls = String.concat "; " (List.map field_decl fields) in
-    let hash = "#" in
+    let hash = Config.ox_syntax "#" "" in
     [%string "type t%{i#Int} = %{hash}{ %{decls} }\n"]
   | Variant constrs ->
     let constr (c, args) =

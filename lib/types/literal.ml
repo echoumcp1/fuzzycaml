@@ -114,7 +114,14 @@ let num_literal ctx num_ty =
     | Int64 | Unboxed UInt64 -> "L"
     | _ -> ""
   in
-  let boxed num_ty value = paren (Int64.to_string value ^ suffix num_ty) in
+  (* Small integer literals are an extension, so they are erased to a
+     conversion. *)
+  let boxed num_ty value =
+    match num_ty with
+    | Num ((I8 | I16) as small) when !erase ->
+      [%string "(%{num_module (Num small)}.of_int %{paren (Int64.to_string value)})"]
+    | _ -> paren (Int64.to_string value ^ suffix num_ty)
+  in
   let float32_literal () =
     choose
       ctx
@@ -132,7 +139,7 @@ let num_literal ctx num_ty =
     boxed num_ty value
   | Unboxed _ ->
     let value = int_value () in
-    if Int64.compare value 0L >= 0
+    if Int64.compare value 0L >= 0 && not !erase
     then Printf.sprintf "#%Ld%s" value (suffix num_ty)
     else convert (boxed_of num_ty) num_ty (boxed (boxed_of num_ty) value)
   | _ -> invalid_arg "num_literal"
@@ -175,10 +182,10 @@ let string_literal ctx =
        else Char.chr (int_in ctx (Char.code 'a') (Char.code 'e'))))
 ;;
 
-let utuple xs = "#" ^ "(" ^ String.concat ", " xs ^ ")"
-let this x = "(" ^ "This " ^ x ^ ")"
-let null () = "Null"
-let urecord fields = "#" ^ "{ " ^ fields ^ " }"
+let utuple xs = ox_syntax "#" "" ^ "(" ^ String.concat ", " xs ^ ")"
+let this x = "(" ^ ox_syntax "This " "Some " ^ x ^ ")"
+let null () = ox_syntax "Null" "None"
+let urecord fields = ox_syntax "#" "" ^ "{ " ^ fields ^ " }"
 
 let nonzero64 ctx =
   choose
@@ -230,13 +237,18 @@ let rec literal ctx ty =
   | Option elem_ty ->
     if flip ctx then [%string "(Some %{literal ctx elem_ty})"] else "None"
   | Pair (first, second) -> [%string "(%{literal ctx first}, %{literal ctx second})"]
+  | Arrow (first, second) when (not !quiet) && same_repr first && flip ctx ->
+    (* So that the argument decides the result. *)
+    [%string
+      "(fun (x : %{first#Ty}) -> if Hashtbl.hash x land 1 = 0 then %{literal ctx second} \
+       else %{literal ctx second})"]
   | Arrow (first, second) -> [%string "(fun (_ : %{first#Ty}) -> %{literal ctx second})"]
   | Unboxed UFloat ->
     choose
       ctx
-      [ (fun () -> "#0.")
-      ; (fun () -> "#1.")
-      ; (fun () -> "#0x1.8p+1")
+      [ (fun () -> ox_syntax "#0." "0.")
+      ; (fun () -> ox_syntax "#1." "1.")
+      ; (fun () -> ox_syntax "#0x1.8p+1" "0x1.8p+1")
       ; (fun () -> [%string "(unbox_float %{float_literal ctx})"])
       ]
   | Num _ | Unboxed _ -> num_literal ctx ty

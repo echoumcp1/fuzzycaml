@@ -41,6 +41,8 @@ let new_ctx tc = { tc; next = 0; decls = [||]; effects = []; used = Hashtbl.crea
 (* Clears the state of the previous program and draws which features this one
    uses. *)
 let start_program ~ox ~effect_syntax tc =
+  if not (Draw.replaying ()) then Draw.recorded := [];
+  if not !erase then Emi.regions := [];
   ox_mode := ox;
   extended_variants := [];
   let forced =
@@ -185,14 +187,31 @@ let atomic_globals ctx items env =
        global, ty)
 ;;
 
-(* The functions that [Ty.convert] names. *)
+(* The functions that [Ty.convert] names. A conversion between two of these
+   types is in the module of the earlier one. *)
 let conversion_definitions () =
+  let stdlib_order = [ Int64; Num Nat; Num I32; Float; Int ] in
+  let index ty = Option.get (List.find_index (( = ) ty) stdlib_order) in
   String.concat
     ""
     (List.rev_map
        (fun (name, (from_ty, to_ty)) ->
+          let from_ty, to_ty =
+            if !erase then boxed_of from_ty, boxed_of to_ty else from_ty, to_ty
+          in
           if from_ty = to_ty
           then [%string "let %{name} (x : %{from_ty#Ty}) = x\n"]
+          else if !erase && List.mem from_ty stdlib_order && List.mem to_ty stdlib_order
+          then (
+            (* Upstream has no primitives named like these, so the erased version
+               converts through the standard library. *)
+            let module_of ty = String.capitalize_ascii (num_name ty) in
+            let fn =
+              if index from_ty < index to_ty
+              then module_of from_ty ^ ".to_" ^ num_name to_ty
+              else module_of to_ty ^ ".of_" ^ num_name from_ty
+            in
+            [%string "let %{name} (x : %{from_ty#Ty}) : %{to_ty#Ty} = %{fn} x\n"])
           else
             [%string
               "external %{name} : %{from_ty#Ty} -> %{to_ty#Ty} = \"%%{num_name \
@@ -256,7 +275,37 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
       [%string
         "let %{var} : %{ty#Ty} = %{rhs}\nlet () = print_endline (%{printer ty} %{var})\n"];
     env := bind !env var ty);
+  (* Interrupt callbacks allocate, which a zero_alloc test would see. *)
+  if !props && not (on "interrupts")
+  then ignore @@ repeat ctx 0 2 (fun _ -> add_item items (Zero_alloc.test ctx !env gen));
   if on "effargs" then add_item items "let () = print_endline (string_of_int !ticks)\n";
   if on "observe" then add_item items "let () = print_endline (string_of_int !obs)\n";
   head ^ conversion_definitions () ^ assemble (List.rev items.items)
+;;
+
+(* The erased version is also compiled without optimization hints, as a
+   reference that the optimizer has little to work with. *)
+let unhinted =
+  Markers.without_all
+    [ "[@inline never]"
+    ; "[@inline always]"
+    ; "[@inline]"
+    ; "[@inlined never]"
+    ; "[@inlined]"
+    ; "[@specialise]"
+    ; "[@unrolled 2]"
+    ; "[@loop always]"
+    ; "[@tail_mod_cons]"
+    ; "[@tailcall false]"
+    ]
+;;
+
+(* The last program generated again with the same choices, erased, without its
+   wrappers or optimization hints. *)
+let erased ~ox ~effect_syntax tc =
+  Draw.replay (fun () ->
+    erase := true;
+    Fun.protect
+      ~finally:(fun () -> erase := false)
+      (fun () -> unhinted (Markers.without_wrappers (program ~ox ~effect_syntax tc))))
 ;;

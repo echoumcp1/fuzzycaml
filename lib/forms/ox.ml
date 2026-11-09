@@ -27,7 +27,7 @@ let unboxed_and_mutable ctx env ty gen =
          in
          let components = List.map (fun t -> fresh ctx "u", t) component_tys in
          let names = String.concat ", " (List.map fst components) in
-         let hash = "#" in
+         let hash = ox_syntax "#" "" in
          [%string
            "(let %{hash}(%{names}) = %{tuple} in %{expr (bind_all env components) ty})"])
      ]
@@ -50,7 +50,7 @@ let unboxed_and_mutable ctx env ty gen =
            in
            let var = fresh ctx "x" in
            let this_branch = expr (bind env var value_ty) ty in
-           let this_constructor = "This" in
+           let this_constructor = ox_syntax "This" "Some" in
            [%string
              "(match %{nullable} with %{Literal.null ()} -> %{expr env ty} | \
               %{this_constructor} %{var} -> %{this_branch})"])
@@ -68,15 +68,21 @@ let unboxed_and_mutable ctx env ty gen =
     [ (fun () ->
         let var = fresh ctx "mu" in
         let loop_var = fresh ctx "i" in
+        (* Erased, the mutable is a ref. *)
+        let read = ox_syntax var ("!" ^ var) in
         let loop_env =
-          { (bind env loop_var Int) with mutables = (var, ty) :: env.mutables }
+          { (bind env loop_var Int) with mutables = (read, ty) :: env.mutables }
         in
         let step = expr loop_env ty in
         let count = expr env Int in
         let init = expr env ty in
-        [%string
-          "(let mutable %{var} : %{ty#Ty} = %{init} in for %{loop_var} = 0 to (%{count} \
-           land 7) do %{var} <- %{step} done; %{var})"])
+        ox_syntax
+          [%string
+            "(let mutable %{var} : %{ty#Ty} = %{init} in for %{loop_var} = 0 to \
+             (%{count} land 7) do %{var} <- %{step} done; %{var})"]
+          [%string
+            "(let %{var} = ref (%{init} : %{ty#Ty}) in for %{loop_var} = 0 to (%{count} \
+             land 7) do %{var} := %{step} done; !%{var})"])
     ]
   else []
 ;;
