@@ -240,6 +240,7 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
       { vars = []
       ; locals = []
       ; in_try = false
+      ; escapes = false
       ; handled_effects = []
       ; mutables = []
       ; in_fun = false
@@ -272,8 +273,16 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
       split := true;
       add_item items module_boundary);
     if flip ~p:0.4 ctx then update_a_global ();
+    let escapes = on "escapes" && flip ctx in
     let ty, rhs =
-      gen.of_shape ~candidates:upcast_candidates ~p:0.5 !env (Any first_order_types)
+      gen.of_shape
+        ~candidates:upcast_candidates
+        ~p:0.5
+        { !env with escapes }
+        (Any first_order_types)
+    in
+    let rhs =
+      if escapes then [%string "(try %{rhs} with Exit -> %{literal ctx ty})"] else rhs
     in
     let var = fresh ctx "v" in
     add_item

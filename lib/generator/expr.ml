@@ -50,7 +50,9 @@ let rec body ctx env ty depth =
   in
   let use_other = flip ~p:(if other_vars = [] then 0. else 0.3) ctx in
   let performs = List.filter (fun effect_ -> effect_.result = ty) env.handled_effects in
-  let raises = flip ~p:(if env.in_try then 0.15 else 0.) ctx in
+  let raises =
+    flip ~p:(if env.in_try then 0.15 else if env.escapes then 0.04 else 0.) ctx
+  in
   let performs_one = flip ~p:(if performs = [] then 0. else 0.2) ctx in
   let performs_let = flip ~p:(if env.handled_effects = [] then 0. else 0.35) ctx in
   if raises
@@ -110,7 +112,7 @@ and at ctx env ?candidates ?p ?(local = false) ?alt shape depth =
             on "observe"
             && first_order ty
             && (not (restricted ty))
-            && (not env.in_try)
+            && (not (handles_exit env))
             && (not env.in_fun)
             && env.handled_effects = []
             && !checks_on

@@ -40,6 +40,7 @@ let all_features =
   ; "effect_syntax"
   ; "effects"
   ; "exits"
+  ; "escapes"
   ; "exns"
   ; "gadt"
   ; "gc"

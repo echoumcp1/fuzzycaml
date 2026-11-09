@@ -9,6 +9,7 @@ type env =
     (* Stack-allocated values, which are only matched on or have an immediate
          field read, so none escapes its region. *)
   ; in_try : bool (* whether a handler for [Exit] is around *)
+  ; escapes : bool (* whether the top-level binding handles [Exit] *)
   ; handled_effects : effect_decl list
   ; mutables : (string * ty) list (* [let mutable]s, which no closure can use *)
   ; in_fun : bool (* inside a function, which may be called where order matters *)
@@ -20,10 +21,12 @@ let bind_local env var ty = { env with locals = (var, ty) :: env.locals }
 let closure env = { env with locals = []; mutables = []; in_fun = true }
 
 (* A closure that escapes may run outside the try blocks and handlers around it. *)
-let escape env = { (closure env) with handled_effects = []; in_try = false }
+let escape env =
+  { (closure env) with handled_effects = []; in_try = false; escapes = false }
+;;
 
 (* A lazy must not perform an effect, as that could leave it unfinished. *)
-let lazy_body env = { (escape env) with in_try = env.in_try }
+let lazy_body env = { (escape env) with in_try = env.in_try; escapes = env.escapes }
 
 (* Code that cannot raise, perform, tick, or use a local or a mutable, so that
    evaluating it anywhere does not change the output. Generated code only
@@ -33,10 +36,15 @@ let pure env =
     locals = []
   ; mutables = []
   ; in_try = false
+  ; escapes = false
   ; handled_effects = []
   ; in_fun = true
   }
 ;;
+
+(* Whether a raise of [Exit] here can skip code, so the order of side effects is
+   visible. *)
+let handles_exit env = env.in_try || env.escapes
 
 let immediate = function
   | Int | Bool -> true
