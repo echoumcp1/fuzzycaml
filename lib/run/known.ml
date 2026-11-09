@@ -91,7 +91,7 @@ let on_trunk name =
   | _ -> false
 ;;
 
-let known_bug ~rerun backends results =
+let known_bug ~rerun backends results source =
   let reference =
     observable
       (Option.value
@@ -174,21 +174,24 @@ let known_bug ~rerun backends results =
                        odd))
           then Some "effect handler pointing into the minor heap"
           else None)
-        (* A list comprehension to max_int, or downto min_int, does not stop:
-           https://github.com/oxcaml/oxcaml/issues/7936. Matches only if all
-           backends agree once comprehension ranges move one step inward. *)
+        (* A list comprehension to max_int, or downto min_int, does not stop.
+           Matches only if the program has such a range and all backends agree
+           once comprehension ranges move one step inward. *)
       ; (fun () ->
+          let at_max = "= (max_int - 15) + ("
+          and at_min = "= min_int + (" in
           let inward source =
             source
-            |> Text.replace_all "= (max_int - 15) + (" ~by:"= (max_int - 16) + ("
-            |> Text.replace_all "= min_int + (" ~by:"= (min_int + 1) + ("
+            |> Text.replace_all at_max ~by:"= (max_int - 16) + ("
+            |> Text.replace_all at_min ~by:"= (min_int + 1) + ("
           in
           let hung = function
             | Ran (Hung, _, _) -> true
             | _ -> false
           in
           if
-            List.exists hung results
+            (Text.contains source at_max || Text.contains source at_min)
+            && List.exists hung results
             &&
             match rerun ~edit:inward backends with
             | first :: rest ->

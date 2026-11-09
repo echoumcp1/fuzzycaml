@@ -269,7 +269,7 @@ let check_source ~ox tc backends source versions =
   then (
     incr timeouts;
     assume tc false);
-  Option.iter skip_known (known_bug ~rerun backends results);
+  Option.iter skip_known (known_bug ~rerun backends results source);
   (* Programs only raise Exit, so a crash or any other uncaught exception is a
      failure even if all backends agree. *)
   if
