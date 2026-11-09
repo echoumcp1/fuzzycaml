@@ -30,6 +30,41 @@ let known_compile_crash msg =
     ]
 ;;
 
+(* Bytecode: a memprof callback that grows a fiber's stack during the
+   allocation in [perform] leaves the continuation on the freed stack.
+   [Effect.Shallow.fiber] performs one itself. Matches only if every crashing
+   backend is bytecode and agrees with the others once memprof is off. *)
+let memprof_perform ~rerun backends results source =
+  let bytecode b =
+    is_toplevel b
+    || String.starts_with ~prefix:"ocamlc" (Filename.basename (List.hd b.argv))
+  in
+  let crashed, others =
+    List.partition
+      (fun (_, r) ->
+         match r with
+         | Ran (Signaled _, _, _) -> true
+         | _ -> false)
+      (List.combine backends results)
+  in
+  let without_memprof source =
+    String.split_on_char '\n' source
+    |> List.filter (fun l ->
+      not (String.starts_with ~prefix:"let () = try ignore (Gc.Memprof" l))
+    |> String.concat "\n"
+  in
+  match others with
+  | (_, expected) :: _
+    when Text.contains source "Gc.Memprof.start"
+         && crashed <> []
+         && List.for_all (fun (b, _) -> bytecode b) crashed
+         && List.for_all
+              (fun r -> observable r = observable expected)
+              (rerun ~edit:without_memprof (List.map fst crashed)) ->
+    Some "memprof callback in perform (bytecode)"
+  | _ -> None
+;;
+
 let atomic_shim =
   {|module Atomic = struct
   include Atomic

@@ -126,6 +126,31 @@ let declare_types ctx items ~ox =
                    | field_ty -> field_ty ))))))
 ;;
 
+(* Callbacks the runtime runs at allocations and major cycles, including in the
+   middle of an effect operation. They grow the current stack and change
+   nothing. Memprof fails on 5.0 to 5.2. *)
+let interrupt_callbacks ctx items =
+  let depth = pick ctx [ 10; 1000; 100000 ] in
+  add_item
+    items
+    [%string
+      "let rec interrupt n = if n = 0 then 0 else 1 + interrupt (n - 1)\n\
+       let interrupt () = ignore (Sys.opaque_identity (interrupt %{depth#Int}))\n"];
+  if flip ctx
+  then (
+    let rate = pick ctx [ "0.001"; "0.01"; "0.1"; "1." ] in
+    let tracker =
+      "{ Gc.Memprof.null_tracker with alloc_minor = (fun _ -> interrupt (); None); \
+       alloc_major = (fun _ -> interrupt (); None) }"
+    in
+    add_item
+      items
+      [%string
+        "let () = try ignore (Gc.Memprof.start ~sampling_rate:%{rate} %{tracker}) with \
+         Failure _ -> ()\n"]);
+  if flip ctx then add_item items "let () = ignore (Gc.create_alarm interrupt)\n"
+;;
+
 let declare_effects ctx items =
   ctx.effects
   <- repeat ctx 1 3 (fun _ ->
@@ -182,6 +207,7 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   let head = [%string "(* features: %{enabled} *)\n%{prelude ()}"] in
   let items = { items = [] } in
   declare_types ctx items ~ox;
+  if on "interrupts" then interrupt_callbacks ctx items;
   let depth = int_in ctx 2 7 in
   if (not ox) && on "effects" then declare_effects ctx items;
   let env =

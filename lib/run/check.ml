@@ -111,6 +111,7 @@ let check_source ~ox tc backends source =
   let rerun ~edit backends =
     run_all ~source_for:(fun b source -> edit (source_for b source)) backends source
   in
+  Option.iter skip_known (memprof_perform ~rerun backends results source);
   if List.for_all (compile_error (Fun.const true)) results
   then (
     (match

@@ -44,6 +44,7 @@ let all_features =
   ; "utuples"
   ; "objects"
   ; "functors"
+  ; "interrupts"
   ; "bigarrays"
   ; "comprehensions"
   ]
