@@ -68,7 +68,7 @@ Programs are well typed, terminate, and have deterministic output:
 - Subexpressions with effects are let-bound, since evaluation order is unspecified.
 - NaNs print as `nan`, and `compare` results go through `sgn`.
 - Division, `mod` and `String.sub` go through total helpers in the prelude. Loop bounds and recursion counters are masked.
-- The only exception raised on purpose is `Exit`, and only inside a handler for it.
+- The only exceptions raised on purpose are `Exit` and, from out-of-bounds stores, `Invalid_argument`, each only inside a handler for it.
 
 A program has a prelude, up to four type declarations, optional effect declarations and atomics, and one to six top-level bindings. Each binding is printed:
 

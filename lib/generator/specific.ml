@@ -232,8 +232,14 @@ let string_forms ctx env gen =
   ; (fun () ->
       let string_var = fresh ctx "s" in
       let buffer = fresh ctx "b" in
+      (* The padding fits any store at the first [String.length] + 1 offsets; past
+         them a store may be out of bounds, and must not write any byte. *)
+      let past_end = flip ctx in
+      let offsets = if past_end then "16" else "1" in
       let offset =
-        [%string "((%{expr env Int} land max_int) mod (String.length %{string_var} + 1))"]
+        [%string
+          "((%{expr env Int} land max_int) mod (String.length %{string_var} + \
+           %{offsets}))"]
       in
       let store =
         choose
@@ -253,6 +259,11 @@ let string_forms ctx env gen =
           ; (fun () ->
               [%string "Bytes.set_int64_be %{buffer} %{offset} %{expr env Int64}"])
           ]
+      in
+      let store =
+        if past_end
+        then [%string "(try %{store} with Invalid_argument _ -> ())"]
+        else store
       in
       [%string
         "(let %{string_var} = %{expr env Str} in let %{buffer} = Bytes.of_string \
@@ -292,6 +303,13 @@ let array_forms ctx env ty gen elem_ty =
         "(let %{array_var} = array_make %{length ()} %{expr env elem_ty} in for \
          %{loop_var} = 0 to array_length %{array_var} - 1 do array_set %{array_var} \
          %{loop_var} %{expr loop_env elem_ty} done; %{array_var})"])
+  ; (fun () ->
+      (* The index may be past the end. *)
+      let array_var = fresh ctx "a" in
+      [%string
+        "(let %{array_var} = array_make %{length ()} %{expr env elem_ty} in (try \
+         array_set %{array_var} (%{expr env Int} land 15) %{expr env elem_ty} with \
+         Invalid_argument _ -> ()); %{array_var})"])
   ]
   @ (match elem_ty with
      | Arr inner_ty ->

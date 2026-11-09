@@ -4,7 +4,8 @@ open Ctx
 open Env
 
 (* A bigarray of a kind that reads back as [ty]. Sizes and indices are bound before
-   they are used, and indices are in bounds. *)
+   they are used, and indices are in bounds, except in a store that catches the
+   error. *)
 let bigarray ctx env ty gen =
   let expr = gen.expr in
   let kind =
@@ -71,6 +72,22 @@ let bigarray ctx env ty gen =
            let index_lets, indices = index () in
            [%string
              "%{index_lets}%{array}.{%{commas indices}} <- %{expr env ty}; %{read array}"])
+       ; (fun () ->
+           let indices = List.map (fun _ -> fresh ctx "k") size_vars in
+           let index_lets =
+             String.concat
+               ""
+               (List.map2
+                  (fun index size_var ->
+                     [%string
+                       "let %{index} = %{first_index - 1#Int} + ((%{expr env Int} land \
+                        max_int) mod (%{size_var} + 2)) in "])
+                  indices
+                  size_vars)
+           in
+           [%string
+             "%{index_lets}(try %{array}.{%{commas indices}} <- %{expr env ty} with \
+              Invalid_argument _ -> ()); %{read array}"])
        ; (fun () ->
            let index_lets, indices = index () in
            [%string "%{index_lets}%{module_}.unsafe_get %{array} %{spaces indices}"])
