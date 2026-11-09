@@ -77,7 +77,7 @@ let rec body ctx env ty depth =
       (* A comparison with a literal is almost always false, so the result rarely
          depends on [x]; a bit of its printed form is either about half the time. *)
       let condition =
-        if !checks_on && (is_num var_ty || not (restricted var_ty)) && flip ctx
+        if !checks_on && (is_num var_ty || not (restricted var_ty)) && flip ~p:0.75 ctx
         then
           [%string
             "Hashtbl.hash (%{Printer.printer var_ty} %{use (var, var_ty)}) land 1 = 0"]

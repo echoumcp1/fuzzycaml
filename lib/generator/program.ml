@@ -233,7 +233,7 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   let items = { items = [] } in
   declare_types ctx items ~ox;
   if on "interrupts" then interrupt_callbacks ctx items;
-  let depth = int_in ctx 2 7 in
+  let depth = int_in ctx 3 7 in
   if on "effects" then declare_effects ctx items;
   let env =
     ref
@@ -267,7 +267,7 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   in
   let split = ref (not (on "modules")) in
   ignore
-  @@ repeat ctx 1 6 (fun _ ->
+  @@ repeat ctx 2 8 (fun _ ->
     if flip ~p:(if !split then 0. else 0.3) ctx
     then (
       split := true;
