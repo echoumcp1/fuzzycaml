@@ -1,7 +1,8 @@
 (* Equivalence modulo inputs: an expression between (*<k*) and (*>k*) that the
-   original never evaluates can be replaced with any value of its type, here the
-   literal in [regions], and the output must not change. Only the regions drawn
-   as prunable are replaced, so dead code also varies. *)
+   original never evaluates can be replaced with any expression of its type,
+   here one generated in its place and kept in [regions], and the output must
+   not change. Only the regions drawn as prunable are replaced, so dead code
+   also varies. *)
 let regions : (string * (string * bool)) list ref = ref []
 let has_regions source = Text.contains source "(*<"
 let hits_tag = "emi hits:"

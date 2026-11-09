@@ -126,7 +126,8 @@ and at ctx env ?candidates ?p ?(local = false) ?alt shape depth =
           if !props && (not !quiet) && flip ~p:0.1 ctx
           then (
             let key = fresh ctx "emi" in
-            let replacement = literal ctx ty in
+            (* Generated quietly, so it has no regions or wrappers of its own. *)
+            let replacement = quietly (fun () -> (gen ctx (depth - 1)).expr env ty) in
             let prunable = flip ctx in
             if not !erase
             then Emi.regions := (key, (replacement, prunable)) :: !Emi.regions;
