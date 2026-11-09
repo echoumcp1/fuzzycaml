@@ -11,13 +11,20 @@ open Expr
 
 let module_boundary = "(* module boundary *)\n"
 
-(* The items in order, without the declarations no later item mentions. *)
+(* The items in order, without the declarations no later item or EMI
+   replacement mentions. *)
 let assemble items =
+  let replacements =
+    List.map (fun (region : Emi.region) -> region.replacement) !Emi.regions
+  in
   let rec keep = function
     | [] -> []
     | (names, text) :: rest ->
       let rest = keep rest in
-      let used name = List.exists (fun (_, text) -> Text.mentions text name) rest in
+      let used name =
+        List.exists (fun (_, text) -> Text.mentions text name) rest
+        || List.exists (fun text -> Text.mentions text name) replacements
+      in
       if names <> [] && not (List.exists used names) then rest else (names, text) :: rest
   in
   String.concat "" (List.map snd (keep items))
