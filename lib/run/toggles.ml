@@ -41,6 +41,16 @@ let ox_toggles =
   ; "-flambda2-match-in-match"
   ; "-flambda2-join-algorithm n-way"
   ; "-experimental-optimizations"
+  ; "-cfg-block-layout"
+  ; "-cfg-copy-propagation"
+  ; "-use-ssa -no-ssa-validate"
+  ; "-use-ssa -no-ssa-simplify"
+  ; "-dbranch-relaxation-max-displacement 16"
+  ; "-dbranch-relaxation-max-displacement 1024"
+  ; "-verify-binary-emitter"
+  ; "-flambda2-expert-cont-specialization-threshold 1000"
+  ; "-no-flambda2-simplify-stubs"
+  ; "-g -gdwarf-may-alter-codegen -gdwarf-may-alter-codegen-experimental"
   ]
 ;;
 
@@ -75,13 +85,21 @@ let with_toggles tc backends =
          in
          let reaper = List.mem "-flambda2-reaper" flags || List.mem "-O4" flags in
          (* The reaper with phantom lets leaves dangling symbols, so they are
-            never combined. The reaper (also on at -O4) makes -dcmm-invariants
-            and -dcfg-invariants reject correct programs, so both checks are
+            never combined; experimental DWARF codegen turns phantom lets on.
+            The reaper (also on at -O4) makes -dcmm-invariants and
+            -dcfg-invariants reject correct programs, so both checks are
             dropped with it. *)
          let drop banned l =
            if reaper then List.filter (fun f -> not (List.mem f banned)) l else l
          in
-         let flags = drop [ "-flambda2-expert-phantom-lets"; "-dcfg-invariants" ] flags in
+         let flags =
+           drop
+             [ "-flambda2-expert-phantom-lets"
+             ; "-gdwarf-may-alter-codegen-experimental"
+             ; "-dcfg-invariants"
+             ]
+             flags
+         in
          let argv = drop [ "-dcmm-invariants" ] b.argv in
          { name = [%string {|%{b.name} %{String.concat " " flags}|}]
          ; argv = argv @ flags
