@@ -14,6 +14,14 @@ type clause =
   ; var_ty : ty
   }
 
+(* The bindings the clauses need, the OxCaml comprehension body, and the erased
+   list. *)
+type built =
+  { lets : string
+  ; ox : string
+  ; erased : string
+  }
+
 (* Comprehensions over ranges and lists or arrays, with their bounds and sources
    bound first so that every version evaluates them once and in the same order. The
    erased version builds the same elements with List. *)
@@ -36,10 +44,11 @@ let comprehensions ctx env ty gen =
     | _ ->
       let low = fresh ctx "lo" in
       let high = fresh ctx "hi" in
+      let start = range_start ctx ~usual:"(-4)" ~width:15 in
       let bounds =
         [%string
-          "let %{low} = (%{expr env Int} land 15) - 4 in let %{high} = (%{expr env Int} \
-           land 15) - 4 in "]
+          "let %{low} = %{start} + (%{expr env Int} land 15) in let %{high} = %{start} + \
+           (%{expr env Int} land 15) in "]
       in
       let count = [%string "(max 0 (%{high} - %{low} + 1))"] in
       if flip ctx
@@ -58,7 +67,6 @@ let comprehensions ctx env ty gen =
         ; var_ty = Int
         }
   in
-  (* The bindings before it, its clauses for OxCaml, and the erased list. *)
   let build iter elem_ty =
     let clauses = List.init (int_in ctx 1 2) (fun _ -> clause iter) in
     let body_env =
@@ -91,15 +99,16 @@ let comprehensions ctx env ty gen =
           ~some:(fun condition_code -> [%string " when (%{condition_code})"])
           condition
     in
-    ( String.concat "" (List.map (fun clause -> clause.bindings) clauses)
-    , ox
-    , erased clauses )
+    { lets = String.concat "" (List.map (fun clause -> clause.bindings) clauses)
+    ; ox
+    ; erased = erased clauses
+    }
   in
   let iarray_module = Config.ox_syntax "Iarray" "Array" in
   (match ty with
    | List elem_ty when value elem_ty ->
      [ (fun () ->
-         let lets, ox, erased =
+         let { lets; ox; erased } =
            build (Some ((fun elem_ty -> List elem_ty), Fun.id)) elem_ty
          in
          if erasing
@@ -108,7 +117,7 @@ let comprehensions ctx env ty gen =
      ]
    | Arr elem_ty when value elem_ty ->
      [ (fun () ->
-         let lets, ox, erased =
+         let { lets; ox; erased } =
            build
              (Some
                 ( (fun elem_ty -> Arr elem_ty)
@@ -127,7 +136,7 @@ let comprehensions ctx env ty gen =
   @ (if value ty
      then
        [ (fun () ->
-           let lets, ox, erased = build None ty in
+           let { lets; ox; erased } = build None ty in
            let default = fresh ctx "d" in
            let array = fresh ctx "ia" in
            let elems =
@@ -155,7 +164,7 @@ let comprehensions ctx env ty gen =
   if ty = Int
   then
     [ (fun () ->
-        let lets, ox, erased = build None Int in
+        let { lets; ox; erased } = build None Int in
         if erasing
         then [%string "(%{lets}List.length %{erased})"]
         else [%string "(%{lets}%{iarray_module}.length [: %{ox} :])"])

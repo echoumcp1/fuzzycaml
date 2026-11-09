@@ -17,18 +17,22 @@ let find ?(from = 0) s sub =
 
 let contains s sub = find s sub <> None
 
-let remove_all sub s =
+let replace_all sub ~by s =
   let b = Buffer.create (String.length s) in
   let i = ref 0 in
   while !i < String.length s do
     if occurs_at s !i sub
-    then i := !i + String.length sub
+    then (
+      Buffer.add_string b by;
+      i := !i + String.length sub)
     else (
       Buffer.add_char b s.[!i];
       incr i)
   done;
   Buffer.contents b
 ;;
+
+let remove_all sub s = replace_all sub ~by:"" s
 
 let is_alphanumeric = function
   | '0' .. '9' | 'a' .. 'z' | 'A' .. 'Z' -> true

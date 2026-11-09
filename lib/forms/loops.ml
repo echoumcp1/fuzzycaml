@@ -12,9 +12,11 @@ let forms ctx env ty gen =
         let ref_var = fresh ctx "r" in
         let loop_var = fresh ctx "i" in
         let body = expr (bind (bind env [%string "!%{ref_var}"] ty) loop_var Int) ty in
+        let start = range_start ctx ~usual:"0" ~width:7 in
         [%string
-          "(let %{ref_var} = ref (%{expr env ty} : %{ty#Ty}) in for %{loop_var} = 0 to \
-           (%{expr env Int} land 7) do %{ref_var} := %{body} done; !%{ref_var})"])
+          "(let %{ref_var} = ref (%{expr env ty} : %{ty#Ty}) in for %{loop_var} = \
+           %{start} to %{start} + (%{expr env Int} land 7) do %{ref_var} := %{body} \
+           done; !%{ref_var})"])
     ; (fun () ->
         let ref_var = fresh ctx "r" in
         let counter = fresh ctx "k" in

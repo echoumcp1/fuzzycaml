@@ -135,15 +135,33 @@ let declare_types ctx items ~ox =
 ;;
 
 (* Callbacks the runtime runs at allocations and major cycles, including in the
-   middle of an effect operation. They grow the current stack and change
-   nothing. Memprof fails on 5.0 to 5.2. *)
+   middle of an effect operation. They grow the current stack, and inside
+   [attempt] the first one raises [Sys.Break], after which [attempt] runs [f]
+   again. [f] is pure, so where the exception hit does not change the result.
+   Memprof fails on 5.0 to 5.2. *)
 let interrupt_callbacks ctx items =
   let depth = pick ctx [ 10; 1000; 100000 ] in
+  let attempt_raising run =
+    [%string
+      "let attempt f = armed := true; match %{run} with v -> armed := false; v | \
+       exception Sys.Break -> f () | exception e -> armed := false; raise e\n"]
+  in
+  (* OxCaml raises an exception from a callback only inside
+     [Sys.with_async_exns], which upstream lacks. The erased version is built by
+     both, so there [attempt] never arms the callbacks. *)
+  let attempt =
+    if !ox_mode
+    then ox_syntax (attempt_raising "Sys.with_async_exns f") "let attempt f = f ()\n"
+    else attempt_raising "f ()"
+  in
   add_item
     items
     [%string
       "let rec interrupt n = if n = 0 then 0 else 1 + interrupt (n - 1)\n\
-       let interrupt () = ignore (Sys.opaque_identity (interrupt %{depth#Int}))\n"];
+       let armed = ref false\n\
+       let interrupt () = ignore (Sys.opaque_identity (interrupt %{depth#Int})); if \
+       !armed then (armed := false; raise Sys.Break)\n\
+       %{attempt}"];
   if flip ctx
   then (
     let rate = pick ctx [ "0.001"; "0.01"; "0.1"; "1." ] in
@@ -233,13 +251,14 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   let items = { items = [] } in
   declare_types ctx items ~ox;
   if on "interrupts" then interrupt_callbacks ctx items;
-  let depth = int_in ctx 2 7 in
-  if (not ox) && on "effects" then declare_effects ctx items;
+  let depth = int_in ctx 3 7 in
+  if on "effects" then declare_effects ctx items;
   let env =
     ref
       { vars = []
       ; locals = []
       ; in_try = false
+      ; escapes = false
       ; handled_effects = []
       ; mutables = []
       ; in_fun = false
@@ -266,14 +285,22 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   in
   let split = ref (not (on "modules")) in
   ignore
-  @@ repeat ctx 1 6 (fun _ ->
+  @@ repeat ctx 2 8 (fun _ ->
     if flip ~p:(if !split then 0. else 0.3) ctx
     then (
       split := true;
       add_item items module_boundary);
     if flip ~p:0.4 ctx then update_a_global ();
+    let escapes = on "escapes" && flip ctx in
     let ty, rhs =
-      gen.of_shape ~candidates:upcast_candidates ~p:0.5 !env (Any first_order_types)
+      gen.of_shape
+        ~candidates:upcast_candidates
+        ~p:0.5
+        { !env with escapes }
+        (Any first_order_types)
+    in
+    let rhs =
+      if escapes then [%string "(try %{rhs} with Exit -> %{literal ctx ty})"] else rhs
     in
     let var = fresh ctx "v" in
     add_item

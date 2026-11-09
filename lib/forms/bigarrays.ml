@@ -4,7 +4,8 @@ open Ctx
 open Env
 
 (* A bigarray of a kind that reads back as [ty]. Sizes and indices are bound before
-   they are used, and indices are in bounds. *)
+   they are used, and indices are in bounds, except in a store that catches the
+   error. *)
 let bigarray ctx env ty gen =
   let expr = gen.expr in
   let kind =
@@ -46,15 +47,19 @@ let bigarray ctx env ty gen =
   let init_param_decls =
     String.concat " " (List.map (fun param -> [%string "(%{param} : int)"]) init_params)
   in
-  let index () =
+  (* With [past_end], an index may also be one before the first or one after the
+     last. *)
+  let index ?(past_end = false) () =
     let indices = List.map (fun _ -> fresh ctx "k") size_vars in
+    let start = if past_end then first_index - 1 else first_index in
+    let modulus size_var = if past_end then [%string "(%{size_var} + 2)"] else size_var in
     ( String.concat
         ""
         (List.map2
-           (fun flat_index size_var ->
+           (fun index size_var ->
               [%string
-                "let %{flat_index} = %{first_index#Int} + ((%{expr env Int} land \
-                 max_int) mod %{size_var}) in "])
+                "let %{index} = %{start#Int} + ((%{expr env Int} land max_int) mod \
+                 %{modulus size_var}) in "])
            indices
            size_vars)
     , indices )
@@ -71,6 +76,12 @@ let bigarray ctx env ty gen =
            let index_lets, indices = index () in
            [%string
              "%{index_lets}%{array}.{%{commas indices}} <- %{expr env ty}; %{read array}"])
+       ; (fun () ->
+           (* [.{} <-] is unchecked under -unsafe, so this calls [set]. *)
+           let index_lets, indices = index ~past_end:true () in
+           [%string
+             "%{index_lets}(try %{module_}.set %{array} %{spaces indices} %{expr env ty} \
+              with Invalid_argument _ -> ()); %{read array}"])
        ; (fun () ->
            let index_lets, indices = index () in
            [%string "%{index_lets}%{module_}.unsafe_get %{array} %{spaces indices}"])

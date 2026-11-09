@@ -136,8 +136,6 @@ let check_source ~ox tc backends source versions =
     then atomic_shim ^ source
     else source
   in
-  (* Compiles again without the zero_alloc test whose function the checker
-     rejects, if any. *)
   let has_emi = List.exists (fun b -> b.version = Emi) backends in
   (* The regions the original evaluates. When the coverage run does not finish,
      nothing is pruned. *)
@@ -151,6 +149,8 @@ let check_source ~ox tc backends source versions =
        | _ -> None)
     | _ -> None
   in
+  (* Compiles again without the zero_alloc test whose function the checker
+     rejects, if any. *)
   let rec compile source =
     if has_emi
     then (
@@ -269,7 +269,7 @@ let check_source ~ox tc backends source versions =
   then (
     incr timeouts;
     assume tc false);
-  Option.iter skip_known (known_bug ~rerun backends results);
+  Option.iter skip_known (known_bug ~rerun backends results source);
   (* Programs only raise Exit, so a crash or any other uncaught exception is a
      failure even if all backends agree. *)
   if

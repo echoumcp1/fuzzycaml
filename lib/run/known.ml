@@ -35,10 +35,6 @@ let known_compile_crash msg =
    [Effect.Shallow.fiber] performs one itself. Matches only if every crashing
    backend is bytecode and agrees with the others once memprof is off. *)
 let memprof_perform ~rerun backends results source =
-  let bytecode b =
-    is_toplevel b
-    || String.starts_with ~prefix:"ocamlc" (Filename.basename (List.hd b.argv))
-  in
   let crashed, others =
     List.partition
       (fun (_, r) ->
@@ -57,7 +53,7 @@ let memprof_perform ~rerun backends results source =
   | (_, expected) :: _
     when Text.contains source "Gc.Memprof.start"
          && crashed <> []
-         && List.for_all (fun (b, _) -> bytecode b) crashed
+         && List.for_all (fun (b, _) -> is_bytecode b) crashed
          && List.for_all
               (fun r -> observable r = observable expected)
               (rerun ~edit:without_memprof (List.map fst crashed)) ->
@@ -95,7 +91,7 @@ let on_trunk name =
   | _ -> false
 ;;
 
-let known_bug ~rerun backends results =
+let known_bug ~rerun backends results source =
   let reference =
     observable
       (Option.value
@@ -177,6 +173,32 @@ let known_bug ~rerun backends results =
                        (fun b -> { b with argv = b.argv @ [ "-runtime-variant"; "d" ] })
                        odd))
           then Some "effect handler pointing into the minor heap"
+          else None)
+        (* A list comprehension to max_int, or downto min_int, does not stop.
+           Matches only if the program has such a range and all backends agree
+           once comprehension ranges move one step inward. *)
+      ; (fun () ->
+          let at_max = "= (max_int - 15) + ("
+          and at_min = "= min_int + (" in
+          let inward source =
+            source
+            |> Text.replace_all at_max ~by:"= (max_int - 16) + ("
+            |> Text.replace_all at_min ~by:"= (min_int + 1) + ("
+          in
+          let hung = function
+            | Ran (Hung, _, _) -> true
+            | _ -> false
+          in
+          if
+            (Text.contains source at_max || Text.contains source at_min)
+            && List.exists hung results
+            &&
+            match rerun ~edit:inward backends with
+            | first :: rest ->
+              (not (hung first))
+              && List.for_all (fun r -> observable r = observable first) rest
+            | [] -> false
+          then Some "list comprehension to max_int"
           else None)
         (* Flambda's -Oclassic reads a constant field of a lifted block as the
            block itself. Matches only if the odd backends agree when compiled

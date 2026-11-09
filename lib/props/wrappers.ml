@@ -28,6 +28,20 @@ let lossless from_ty to_ty =
 
 let numbers = [ Int; Int64; Float ] @ newer_numbers
 
+type field_slot =
+  { record_decl : int
+  ; field : string
+  ; fields : (string * ty) list
+  ; unboxed : bool
+  }
+
+type arg_slot =
+  { variant_decl : int
+  ; constructor : string
+  ; args : ty list
+  ; position : int
+  }
+
 (* A container of [ty], built from [x] and taken apart again. The container is
    passed directly, through a let, or through a function the compiler does not
    inline. *)
@@ -68,12 +82,21 @@ let rec layer ctx env ty gen x =
            List.filter_map
              (fun (field : record_field) ->
                 if field.ty = ty
-                then Some (decl, field.name, field_types fields, false)
+                then
+                  Some
+                    { record_decl = decl
+                    ; field = field.name
+                    ; fields = field_types fields
+                    ; unboxed = false
+                    }
                 else None)
              fields
          | URecord fields ->
            List.filter_map
-             (fun (fn, ft) -> if ft = ty then Some (decl, fn, fields, true) else None)
+             (fun (name, field_ty) ->
+                if field_ty = ty
+                then Some { record_decl = decl; field = name; fields; unboxed = true }
+                else None)
              fields
          | Variant _ -> [])
       (indexed_decls ctx)
@@ -87,8 +110,10 @@ let rec layer ctx env ty gen x =
              (fun (constructor, args) ->
                 List.concat
                   (List.mapi
-                     (fun position a ->
-                        if a = ty then [ decl, constructor, args, position ] else [])
+                     (fun position arg_ty ->
+                        if arg_ty = ty
+                        then [ { variant_decl = decl; constructor; args; position } ]
+                        else [])
                      args))
              constrs
          | Record _ | URecord _ -> [])
@@ -259,21 +284,21 @@ let rec layer ctx env ty gen x =
      @ gate
          (fields_of_ty <> [])
          [ (fun () ->
-             let decl, field, fields, unboxed = pick ctx fields_of_ty in
+             let { record_decl; field; fields; unboxed } = pick ctx fields_of_ty in
              let build_record x =
                String.concat
                  "; "
                  (List.map
-                    (fun (fn, ft) ->
-                       if fn = field
-                       then [%string "%{fn} = %{x}"]
-                       else [%string "%{fn} = %{junk env ft gen}"])
+                    (fun (name, field_ty) ->
+                       if name = field
+                       then [%string "%{name} = %{x}"]
+                       else [%string "%{name} = %{junk env field_ty gen}"])
                     fields)
              in
              let hash = if unboxed then "#" else "" in
              carry
                ctx
-               (Named decl)
+               (Named record_decl)
                (fun x -> [%string "%{hash}{ %{build_record x} }"])
                (fun container ->
                   if unboxed
@@ -291,20 +316,18 @@ let rec layer ctx env ty gen x =
      @ gate
          (args_of_ty <> [])
          [ (fun () ->
-             let decl, constructor, args, position = pick ctx args_of_ty in
+             let { variant_decl; constructor; args; position } = pick ctx args_of_ty in
              let build_args x =
                List.mapi
-                 (fun junk_expr a -> if junk_expr = position then x else junk env a gen)
+                 (fun i arg_ty -> if i = position then x else junk env arg_ty gen)
                  args
              in
              let destructure =
-               List.mapi
-                 (fun junk_expr _ -> if junk_expr = position then var else "_")
-                 args
+               List.mapi (fun i _ -> if i = position then var else "_") args
              in
              carry
                ctx
-               (Named decl)
+               (Named variant_decl)
                (fun x -> construct constructor (build_args x))
                (fun container ->
                   [%string

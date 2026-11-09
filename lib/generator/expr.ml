@@ -17,6 +17,19 @@ let rec body ctx env ty depth =
     Hashtbl.replace ctx.used var ();
     var
   in
+  let hashable =
+    if !checks_on
+    then
+      List.filter
+        (fun (_, var_ty) ->
+           first_order var_ty && (is_num var_ty || not (restricted var_ty)))
+        env.vars
+    else []
+  in
+  (* Either value about half the time, depending on [var]. *)
+  let parity ((_, var_ty) as var) =
+    [%string "Hashtbl.hash (%{Printer.printer var_ty} %{use var}) land 1 = 0"]
+  in
   let leaf () =
     let choice = int_in ctx 0 (List.length vars) in
     let prefer_unused = flip ~p:(if unused = [] then 0. else 0.7) ctx in
@@ -26,6 +39,8 @@ let rec body ctx env ty depth =
         if prefer_unused then int_in ctx 0 (List.length unused - 1) else int_in ctx 0 0
       in
       use (if prefer_unused then List.nth unused index else List.nth vars (choice - 1)))
+    else if ty = Bool && hashable <> [] && flip ~p:0.7 ctx
+    then [%string "(%{parity (pick ctx hashable)})"]
     else (
       let lit = literal ctx ty in
       if (not (restricted ty)) && on "opaque" && flip ~p:0.15 ctx
@@ -50,7 +65,9 @@ let rec body ctx env ty depth =
   in
   let use_other = flip ~p:(if other_vars = [] then 0. else 0.3) ctx in
   let performs = List.filter (fun effect_ -> effect_.result = ty) env.handled_effects in
-  let raises = flip ~p:(if env.in_try then 0.15 else 0.) ctx in
+  let raises =
+    flip ~p:(if env.in_try then 0.15 else if env.escapes then 0.04 else 0.) ctx
+  in
   let performs_one = flip ~p:(if performs = [] then 0. else 0.2) ctx in
   let performs_let = flip ~p:(if env.handled_effects = [] then 0. else 0.35) ctx in
   if raises
@@ -72,13 +89,10 @@ let rec body ctx env ty depth =
     in
     match other_vars with
     | (var, var_ty) :: _ when use_other ->
-      (* A comparison with a literal is almost always false, so the result rarely
-         depends on [x]; a bit of its printed form is either about half the time. *)
+      (* A comparison with a literal is almost always false. *)
       let condition =
-        if !checks_on && (is_num var_ty || not (restricted var_ty)) && flip ctx
-        then
-          [%string
-            "Hashtbl.hash (%{Printer.printer var_ty} %{use (var, var_ty)}) land 1 = 0"]
+        if !checks_on && (is_num var_ty || not (restricted var_ty)) && flip ~p:0.75 ctx
+        then parity (var, var_ty)
         else [%string "%{use (var, var_ty)} = %{literal ctx var_ty}"]
       in
       [%string "(if %{condition} then %{expr env ty} else %{expr env ty})"]
@@ -110,7 +124,7 @@ and at ctx env ?candidates ?p ?(local = false) ?alt shape depth =
             on "observe"
             && first_order ty
             && (not (restricted ty))
-            && (not env.in_try)
+            && (not (handles_exit env))
             && (not env.in_fun)
             && env.handled_effects = []
             && !checks_on

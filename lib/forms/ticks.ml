@@ -86,7 +86,7 @@ let forms ctx env ty gen =
     (if on "effargs"
      then
        gate
-         ((not env.in_try) && (not env.in_fun) && env.handled_effects = [])
+         ((not (handles_exit env)) && (not env.in_fun) && env.handled_effects = [])
          (effectful ctx env ty gen)
      else [])
 ;;

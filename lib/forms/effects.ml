@@ -25,28 +25,35 @@ let computation ctx env handled gen =
     (Any first_order_types)
 ;;
 
-(* The bound value, continuation and body of a handler's arm for one effect. *)
+type arm =
+  { payload : string
+  ; continuation : string
+  ; body : string
+  }
+
 let arm_body ctx env ty expr ~resume ~discontinue { arg; result; _ } =
   let payload = fresh ctx "v" in
   let continuation = fresh ctx "k" in
   let arm_env = bind env payload arg in
   let resumed_result = fresh ctx "r" in
   let resumed () = resume continuation (expr arm_env result) result in
-  ( payload
-  , continuation
-  , choose
-      ctx
-      ([ resumed
-       ; (fun () ->
-           [%string
-             "(let %{resumed_result} : %{ty#Ty} = %{resumed ()} in %{expr (bind arm_env \
-              resumed_result ty) ty})"])
-       ; (fun () -> [%string "(ignore %{continuation}; %{expr arm_env ty})"])
-       ]
-       @
-       if discontinue && env.in_try
-       then [ (fun () -> [%string "Effect.Deep.discontinue %{continuation} Exit"]) ]
-       else []) )
+  { payload
+  ; continuation
+  ; body =
+      choose
+        ctx
+        ([ resumed
+         ; (fun () ->
+             [%string
+               "(let %{resumed_result} : %{ty#Ty} = %{resumed ()} in %{expr (bind \
+                arm_env resumed_result ty) ty})"])
+         ; (fun () -> [%string "(ignore %{continuation}; %{expr arm_env ty})"])
+         ]
+         @
+         if discontinue && env.in_try
+         then [ (fun () -> [%string "Effect.Deep.discontinue %{continuation} Exit"]) ]
+         else [])
+  }
 ;;
 
 let deep_resume continuation value result =
@@ -67,13 +74,17 @@ let perform_let ctx env expr { constructor; arg; result } ty =
      in %{body})"]
 ;;
 
+(* The computation, arms and [retc] are closures. *)
+let without_captures env = { env with locals = []; mutables = [] }
+
 let handler ctx env ty gen =
+  let env = without_captures env in
   let expr = gen.expr in
   let handled, catches_exit, body_env = handler_setup ctx env in
   let returned = fresh ctx "x" in
   let exnc = exception_handler env ty expr catches_exit in
   let arm ({ constructor; _ } as effect_) =
-    let payload, continuation, body =
+    let { payload; continuation; body } =
       arm_body ctx env ty expr ~resume:deep_resume ~discontinue:true effect_
     in
     [%string
@@ -101,6 +112,7 @@ let handler ctx env ty gen =
 ;;
 
 let shallow ctx env ty gen =
+  let env = without_captures env in
   let expr = gen.expr in
   let handled, catches_exit, body_env = handler_setup ctx env in
   let continue_ = fresh ctx "go" in
@@ -110,7 +122,7 @@ let shallow ctx env ty gen =
   let body_ty, body = computation ctx body_env handled gen in
   let arm ({ constructor; _ } as effect_) =
     let resume continuation value _ = [%string "%{continue_} %{continuation} %{value}"] in
-    let payload, continuation, body =
+    let { payload; continuation; body } =
       arm_body ctx env ty expr ~resume ~discontinue:false effect_
     in
     [%string
@@ -134,7 +146,7 @@ let effect_match ctx env ty gen =
   let returned = fresh ctx "x" in
   let body_ty, body = computation ctx body_env handled gen in
   let arm ({ constructor; _ } as effect_) =
-    let payload, continuation, body =
+    let { payload; continuation; body } =
       arm_body ctx env ty expr ~resume:deep_resume ~discontinue:true effect_
     in
     [%string "| effect %{constructor} %{payload}, %{continuation} -> %{body}"]

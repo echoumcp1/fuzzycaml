@@ -68,16 +68,14 @@ let many_args ctx env ty gen =
   let remaining = fresh ctx "n" in
   let env = closure env in
   let first_count = fresh ctx "m" in
-  (* Each parameter, and the variable bound to its first argument. *)
-  let outer_args =
+  let first_args =
     List.init (int_in ctx 9 14) (fun _ ->
       let var_ty, value =
         gen.of_shape ~candidates:[ Int; Float ] ~p:0.67 env (Any first_order_types)
       in
-      let var = fresh ctx "b" in
-      fresh ctx "a", { var; var_ty; value })
+      { var = fresh ctx "b"; var_ty; value })
   in
-  let params = List.map (fun (param, arg) -> param, arg.var_ty) outer_args in
+  let params = List.map (fun arg -> fresh ctx "a", arg.var_ty) first_args in
   let body_env = bind_all (bind env remaining Int) params in
   (* Recursive calls mostly pass parameters through, to keep programs small. *)
   let arg arg_ty =
@@ -91,9 +89,9 @@ let many_args ctx env ty gen =
          { var = fresh ctx "b"; var_ty; value })
       params
   in
-  let outer_lets = lets (List.map snd outer_args) in
+  let outer_lets = lets first_args in
   let outer_args =
-    String.concat " " (first_count :: List.map (fun (_, arg) -> arg.var) outer_args)
+    String.concat " " (first_count :: List.map (fun arg -> arg.var) first_args)
   in
   let inner_lets = lets inner_args in
   let recursive_args =
@@ -131,9 +129,27 @@ let gc ctx env ty gen =
     "(%{lets allocations}%{gc}; %{gen.expr (bind_all env (types allocations)) ty})"]
 ;;
 
+(* An interrupt callback may raise in the middle of it, and then it runs again. A
+   lazy from outside is left out: interrupted while forcing it, it would raise
+   [Sys.Break] again when the retry forces it. *)
+let interrupted env ty gen =
+  let env = pure env in
+  let env =
+    { env with
+      vars =
+        List.filter
+          (fun (var, _) -> not (String.starts_with ~prefix:"(Lazy.force " var))
+          env.vars
+    }
+  in
+  [%string "(attempt (fun () -> %{gen.expr env ty}))"]
+;;
+
 let forms ctx env ty gen =
   let value = not (restricted ty) in
   (if first_order ty then [ (fun () -> pressure ctx env ty gen) ] else [])
   @ (if value && on "manyargs" then [ (fun () -> many_args ctx env ty gen) ] else [])
   @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty gen) ] else [])
+  @ boost
+      (if value && on "interrupts" then [ (fun () -> interrupted env ty gen) ] else [])
 ;;
