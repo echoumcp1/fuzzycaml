@@ -43,7 +43,9 @@ let discover ~ox =
       let libs ext =
         if ox
         then
-          [ "-I"
+          [ "-extension"
+          ; "comprehensions"
+          ; "-I"
           ; "+stdlib_stable"
           ; "-I"
           ; "+stdlib_upstream_compatible"

@@ -45,6 +45,7 @@ let all_features =
   ; "objects"
   ; "functors"
   ; "bigarrays"
+  ; "comprehensions"
   ]
 ;;
 

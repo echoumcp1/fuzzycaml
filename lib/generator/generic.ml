@@ -413,6 +413,7 @@ let generic ctx env ty gen =
   @ Atomics.forms ctx env ty gen
   @ Objects.forms ctx env ty gen
   @ Bigarrays.forms ctx env ty gen
+  @ Comprehensions.forms ctx env ty gen
   @ Functors.forms ctx env ty gen
   @ Stress.forms ctx env ty gen
   @ Exceptions.forms ctx env ty gen
