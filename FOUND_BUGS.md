@@ -12,4 +12,9 @@ Compiler bugs found by fuzzycaml that had not been reported before.
 - [oxcaml/oxcaml#7737](https://github.com/oxcaml/oxcaml/issues/7737): `-flambda2-reaper` calls a Cmm handler declared with 0 arguments with 1, which `-dcmm-invariants` rejects.
 - [oxcaml/oxcaml#7746](https://github.com/oxcaml/oxcaml/issues/7746): on arm64, a `float32#` constant such as 2^62 is emitted as an `fmov` immediate it cannot encode, and the assembler rejects it.
 - [oxcaml/oxcaml#7763](https://github.com/oxcaml/oxcaml/issues/7763): `-flambda2-match-in-match` crashes with `Variable unboxed_field_0 not expected to be free in whole-compilation-unit term`, depending on the file name.
-- [oxcaml/oxcaml#7789](https://github.com/oxcaml/oxcaml/issues/7789): `ocamlopt` crashes with `Invalid_argument("fold_left_map2")` on a local function applied to the contents of a `ref`.
+- [oxcaml/oxcaml#7789](https://github.com/oxcaml/oxcaml/issues/7789) (fixed): `ocamlopt` crashes with `Invalid_argument("fold_left_map2")` on a local function applied to the contents of a `ref`.
+- [oxcaml/oxcaml#7891](https://github.com/oxcaml/oxcaml/issues/7891): with `-Oclassic -dcfg-invariants`, a `[@zero_alloc]` function returning an unboxed tuple fails the CFG invariants (`return with 1 argument(s), expected 2`).
+- [oxcaml/oxcaml#7892](https://github.com/oxcaml/oxcaml/issues/7892): a `[@tail_mod_cons]` function fails to compile with `Unable to restore region stack`.
+- [oxcaml/oxcaml#7895](https://github.com/oxcaml/oxcaml/issues/7895): the toplevel crashes with `Bytegen.merge_repr` on an unused `float#` let after an unknown call.
+- [oxcaml/oxcaml#7921](https://github.com/oxcaml/oxcaml/issues/7921): a method passing an unboxed float constant to a function aborts at run time with `[flambda2] Invalid code`.
+- [oxcaml/oxcaml#7927](https://github.com/oxcaml/oxcaml/issues/7927): with `-use-ssa -caml-apply-inline-fast-path`, the SSA validator aborts with `CFG comparison MISMATCH`.
