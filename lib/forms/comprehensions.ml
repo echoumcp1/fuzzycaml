@@ -36,10 +36,11 @@ let comprehensions ctx env ty gen =
     | _ ->
       let low = fresh ctx "lo" in
       let high = fresh ctx "hi" in
+      let start = range_start ctx ~usual:"(-4)" ~width:15 in
       let bounds =
         [%string
-          "let %{low} = (%{expr env Int} land 15) - 4 in let %{high} = (%{expr env Int} \
-           land 15) - 4 in "]
+          "let %{low} = %{start} + (%{expr env Int} land 15) in let %{high} = %{start} + \
+           (%{expr env Int} land 15) in "]
       in
       let count = [%string "(max 0 (%{high} - %{low} + 1))"] in
       if flip ctx

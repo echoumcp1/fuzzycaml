@@ -21,6 +21,14 @@ let int_in ctx lo hi = Draw.int ctx.tc lo hi
 let flip ?p ctx = Draw.bool ?p ctx.tc
 let pick ctx l = List.nth l (int_in ctx 0 (List.length l - 1))
 
+(* The start of a range at most [width] long: usually [usual], sometimes at an
+   end of [int]. *)
+let range_start ctx ~usual ~width =
+  if flip ~p:0.15 ctx
+  then pick ctx [ [%string "(max_int - %{width#Int})"]; "min_int" ]
+  else usual
+;;
+
 exception Inapplicable
 
 let gate applicable forms =
