@@ -7,7 +7,7 @@ let () =
   let sample = List.mem "--sample" args in
   let ox = List.mem "--ox" args in
   let test_cases =
-    match List.filter (fun a -> a <> "--sample" && a <> "--ox") args with
+    match List.filter (fun a -> not (List.mem a [ "--sample"; "--ox" ])) args with
     | [ n ] -> int_of_string n
     | _ -> if sample then 5 else 200
   in
@@ -33,11 +33,12 @@ let () =
     if List.length backends < 2 then failwith "need at least two backends";
     at_exit (fun () ->
       Printf.printf
-        "ran %d programs, compiled %d, %d timed out, %d hit known bugs\n%!"
+        "ran %d programs, compiled %d, %d timed out, %d hit known bugs, %d rejected\n%!"
         !cases
         !compiled
         !timeouts
-        !known);
+        !known
+        !rejected);
     let effect_syntax = effect_syntax ~ox backends in
     Printf.printf "effect syntax: %b\n%!" effect_syntax;
     let failure_blobs =

@@ -1,3 +1,6 @@
+(* OCaml evaluates function arguments and [%string] holes right to left, so
+   generators bind the draws of a template's holes before the template, in the
+   order the program reads. *)
 open Hegel
 open Ty
 
@@ -36,14 +39,14 @@ let choose ctx options =
 
 let indexed_decls ctx = List.mapi (fun i d -> i, d) (Array.to_list ctx.decls)
 
-let some ctx n l =
-  let flips = List.init (max n (List.length l)) (fun _ -> flip ctx) in
-  List.filteri (fun i _ -> List.nth flips i) l
+(* Each element of [l] with probability 1/2. At least [n] coins are drawn
+   whatever the length of [l], so the draws after it stay in place when [l]
+   shrinks. *)
+let subset ctx n l =
+  let coins = List.init (max n (List.length l)) (fun _ -> flip ctx) in
+  List.filteri (fun i _ -> List.nth coins i) l
 ;;
 
-(* OCaml evaluates function arguments and [%string] holes right to left, so draws taken
-   out of a template are bound rightmost first, to keep the sequence of choices. *)
-let p = Printf.sprintf
 let unused ctx vars = List.filter (fun (x, _) -> not (Hashtbl.mem ctx.used x)) vars
 let paren s = if String.length s > 0 && s.[0] = '-' then [%string "(%{s})"] else s
 

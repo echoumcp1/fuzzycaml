@@ -105,7 +105,7 @@ let discover ~ox =
               ]
           ]
         else
-          (* programs do not rely on bounds checks *)
+          (* Programs do not rely on bounds checks. *)
           [ opt "-unsafe-inline" [ "-unsafe"; "-inline"; "1000"; "-runtime-variant"; "d" ]
           ]))
 ;;
@@ -132,7 +132,7 @@ let effect_syntax ~ox backends =
   (not ox)
   && List.for_all
        (fun b ->
-          match read_process [| List.hd b.argv; "-version" |] with
+          match read_process [| List.hd b.argv; "-vnum" |] with
           | Some v ->
             (match String.split_on_char '.' (String.trim v) with
              | major :: minor :: _ -> (int_of_string major, int_of_string minor) >= (5, 3)

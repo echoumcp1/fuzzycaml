@@ -14,12 +14,21 @@ let rec printer = function
   | Pair (a, b) ->
     [%string {|(fun (a, b) -> "(" ^ %{printer a} a ^ ", " ^ %{printer b} b ^ ")")|}]
   | Arrow _ -> {|(fun _ -> "<fun>")|}
-  | Arr t
-    when match t with
-         | U _ -> false
-         | _ -> true ->
+  | Arr t when not (restricted t) ->
     [%string
       {|(fun a -> "[|" ^ String.concat "; " (Array.to_list (Array.map %{printer t} a)) ^ "|]")|}]
+  | Arr t ->
+    [%string
+      {|(fun a -> "[|" ^ String.concat "; " (List.init (array_length a) (fun i -> %{printer t} (array_get a i))) ^ "|]")|}]
+  | UTuple ts ->
+    let xs = List.mapi (fun i _ -> "x" ^ string_of_int i) ts in
+    let shown =
+      String.concat
+        {| ^ ", " ^ |}
+        (List.map2 (fun x t -> [%string "%{printer t} %{x}"]) xs ts)
+    in
+    let pattern = "#" ^ "(" ^ String.concat ", " xs ^ ")" in
+    [%string {|(fun %{pattern} -> "#(" ^ %{shown} ^ ")")|}]
   | Named i -> [%string "show_t%{i#Int}"]
   | t when is_num t ->
     if is_float t
@@ -43,10 +52,10 @@ let declaration ?parent i decl =
     let flatten =
       if
         List.for_all
-          (fun (_, field_ty, _) -> field_ty = Float || field_ty = float_u)
+          (fun (_, field_ty, _) -> field_ty = Float || field_ty = unboxed_float)
           fields
         && has Float
-        && has float_u
+        && has unboxed_float
       then " [@@flatten_floats]"
       else ""
     in
@@ -58,11 +67,15 @@ let declaration ?parent i decl =
   | URecord fields ->
     let field_decl (field, field_ty) = [%string "%{field} : %{field_ty#Ty}"] in
     let decls = String.concat "; " (List.map field_decl fields) in
-    [%string "type t%{i#Int} = #{ %{decls} }\n"]
+    let hash = "#" in
+    [%string "type t%{i#Int} = %{hash}{ %{decls} }\n"]
   | Variant constrs ->
     let constr (c, args) =
       match args with
       | [] -> c
+      | _ when List.mem c !Config.inline_records ->
+        let fields = List.mapi (fun i t -> [%string "r%{i#Int} : %{t#Ty}"]) args in
+        [%string {|%{c} of { %{String.concat "; " fields} }|}]
       | _ -> [%string {|%{c} of %{String.concat " * " (List.map show_ty args)}|}]
     in
     let show (c, args) =
@@ -70,13 +83,12 @@ let declaration ?parent i decl =
       | [] -> [%string {|%{c} -> "%{c}"|}]
       | _ ->
         let xs = List.mapi (fun j _ -> [%string "a%{j#Int}"]) args in
-        let vars = String.concat ", " xs in
         let shown =
           String.concat
             {| ^ ", " ^ |}
             (List.map2 (fun x t -> [%string "%{printer t} %{x}"]) xs args)
         in
-        [%string {|%{c} (%{vars}) -> "%{c} (" ^ %{shown} ^ ")"|}]
+        [%string {|%{Literal.construct c xs} -> "%{c} (" ^ %{shown} ^ ")"|}]
     in
     let alts cs = String.concat " | " (List.map constr cs) in
     let body =

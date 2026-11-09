@@ -8,6 +8,7 @@ let cases = ref 0
 let compiled = ref 0
 let timeouts = ref 0
 let known = ref 0
+let rejected = ref 0
 
 exception Not_compiled of string
 exception Backend_crashed of string
@@ -52,37 +53,79 @@ let check_source ~ox tc backends source =
   incr compiled;
   (* -dcmm-invariants rejects calls that return unboxed tuples or records. *)
   let backends =
-    if ox && (contains source "#(" || contains source "#{")
+    if ox && (Text.contains source "#(" || Text.contains source "#{")
     then
       List.map
         (fun b -> { b with argv = List.filter (( <> ) "-dcmm-invariants") b.argv })
         backends
     else backends
   in
-  (* Trunk -linscan miscompiles native atomics (see [known_bug]), so they are
-     replaced with ordinary functions. *)
   let source_for b source =
-    if String.ends_with ~suffix:"linscan" b.name && contains source "Atomic."
+    if
+      on_trunk b.name
+      && String.ends_with ~suffix:"linscan" b.name
+      && Text.contains source "Atomic."
     then atomic_shim ^ source
     else source
   in
   let results = run_all ~source_for backends source in
-  let compile_error f = function
-    | Compile_error msg -> f msg
+  let compile_error fn = function
+    | Compile_error msg -> fn msg
     | Ran _ -> false
+  in
+  let save kind count why =
+    Option.iter
+      (fun dir ->
+         Out_channel.with_open_bin
+           (Filename.concat dir [%string "%{kind}%{Unix.getpid ()#Int}-%{count#Int}.ml"])
+           (fun oc ->
+              output_string oc [%string "(* %{kind} %{why} *)\n"];
+              List.iter
+                (fun b ->
+                   output_string
+                     oc
+                     [%string "(* backend %{b.name}: %{String.concat \" \" b.argv} *)\n"])
+                backends;
+              output_string oc source))
+      (Sys.getenv_opt "FUZZYCAML_SAVE")
+  in
+  let skip_known bug =
+    incr known;
+    save "known" !known [%string "bug: %{bug}"];
+    assume tc false
+  in
+  (* A program a compiler rejects without crashing is a generator bug. It is
+     saved and skipped, so a run goes on. *)
+  let reject () =
+    incr rejected;
+    save
+      "rejected"
+      !rejected
+      (String.map (fun c -> if c = '*' then '#' else c) (report backends results));
+    assume tc false
+  in
+  let crashed msg =
+    List.exists (Text.contains msg) [ "Fatal error"; "Assembler error"; "linking" ]
+  in
+  (* Runs [backends] again on the program, edited. *)
+  let rerun ~edit backends =
+    run_all ~source_for:(fun b source -> edit (source_for b source)) backends source
   in
   if List.for_all (compile_error (Fun.const true)) results
   then (
-    if List.for_all (compile_error known_compile_crash) results
-    then (
-      incr known;
-      assume tc false);
+    (match
+       List.map
+         (function
+           | Compile_error msg -> known_compile_crash msg
+           | Ran _ -> None)
+         results
+     with
+     | Some bug :: rest when List.for_all Option.is_some rest -> skip_known bug
+     | _ -> ());
+    if not (List.exists (compile_error crashed) results) then reject ();
     raise
       (Not_compiled
-         ((if List.exists (compile_error (fun msg -> contains msg "Fatal error")) results
-           then "compiler crash: no backend compiled the program\n"
-           else "generator bug: no backend compiled the program\n")
-          ^ report backends results)));
+         ("compiler crash: no backend compiled the program\n" ^ report backends results)));
   if
     List.exists
       (function
@@ -92,16 +135,7 @@ let check_source ~ox tc backends source =
   then (
     incr timeouts;
     assume tc false);
-  if known_bug backends results source
-  then (
-    incr known;
-    Option.iter
-      (fun dir ->
-         Out_channel.with_open_bin
-           (Filename.concat dir [%string "known%{Unix.getpid ()#Int}-%{!known#Int}.ml"])
-           (fun oc -> output_string oc source))
-      (Sys.getenv_opt "FUZZYCAML_SAVE");
-    assume tc false);
+  Option.iter skip_known (known_bug ~rerun backends results);
   (* Programs only raise Exit, so a crash or any other uncaught exception is a
      failure even if all backends agree. *)
   if
@@ -109,8 +143,10 @@ let check_source ~ox tc backends source =
       (function
         | Ran (Signaled _, _, _) -> true
         | Ran (Exited 2, _, err) ->
-          (* contains, since the debug runtime prints a banner first *)
-          not (contains err "Fatal error: exception Stdlib.Exit")
+          (* The debug runtime prints a banner first. *)
+          not
+            (Text.contains err "Fatal error: exception Stdlib.Exit"
+             || Text.contains err "Exception: Stdlib.Exit.")
         | _ -> false)
       results
   then fail backends results (fun t -> Backend_crashed t) "backend crashed\n";
@@ -129,7 +165,7 @@ let check ~ox ~effect_syntax backends tc =
   if Hashtbl.length outcomes > 100_000 then Hashtbl.reset outcomes;
   match Hashtbl.find_opt outcomes key with
   | Some None -> ()
-  | Some (Some (e, bt)) -> Printexc.raise_with_backtrace e bt
+  | Some (Some (exn, backtrace)) -> Printexc.raise_with_backtrace exn backtrace
   | None ->
     (match check_source ~ox tc backends source with
      | () -> Hashtbl.add outcomes key None
@@ -137,8 +173,8 @@ let check ~ox ~effect_syntax backends tc =
          (( Not_compiled _
           | Backend_crashed _
           | Backends_disagree _
-          | Internal.Assume_rejected ) as e) ->
-       let bt = Printexc.get_raw_backtrace () in
-       Hashtbl.add outcomes key (Some (e, bt));
-       Printexc.raise_with_backtrace e bt)
+          | Internal.Assume_rejected ) as exn) ->
+       let backtrace = Printexc.get_raw_backtrace () in
+       Hashtbl.add outcomes key (Some (exn, backtrace));
+       Printexc.raise_with_backtrace exn backtrace)
 ;;

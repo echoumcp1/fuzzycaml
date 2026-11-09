@@ -19,14 +19,20 @@ type exit =
 let spawn ~dir argv =
   let out = Filename.concat dir [%string "out%{Random.bits ()#Int}"] in
   let err = out ^ ".err" in
-  let fd path = Unix.openfile path [ O_WRONLY; O_CREAT; O_TRUNC ] 0o644 in
-  let fo = fd out
-  and fe = fd err in
+  let open_for_writing path = Unix.openfile path [ O_WRONLY; O_CREAT; O_TRUNC ] 0o644 in
+  let out_fd = open_for_writing out
+  and err_fd = open_for_writing err in
   let pid =
-    Unix.create_process_env (List.hd argv) (Array.of_list argv) clean_env Unix.stdin fo fe
+    Unix.create_process_env
+      (List.hd argv)
+      (Array.of_list argv)
+      clean_env
+      Unix.stdin
+      out_fd
+      err_fd
   in
-  Unix.close fo;
-  Unix.close fe;
+  Unix.close out_fd;
+  Unix.close err_fd;
   ( pid
   , fun () ->
       ( In_channel.with_open_bin out In_channel.input_all
@@ -56,53 +62,22 @@ let show_exit = function
   | Timeout -> "timeout"
 ;;
 
-(* Whether [sub] occurs in [s] at [i]. *)
-let occurs_at s i sub =
-  let n = String.length sub in
-  let rec go j = j = n || (s.[i + j] = sub.[j] && go (j + 1)) in
-  i + n <= String.length s && go 0
-;;
-
-let strip ~prefix s =
-  let b = Buffer.create (String.length s) in
-  let i = ref 0 in
-  while !i < String.length s do
-    if occurs_at s !i prefix
-    then i := !i + String.length prefix
-    else (
-      Buffer.add_char b s.[!i];
-      incr i)
-  done;
-  Buffer.contents b
-;;
-
 type result =
   | Compile_error of string
   | Ran of exit * string * string
-
-let find s sub =
-  let rec go i =
-    if i + String.length sub > String.length s
-    then None
-    else if occurs_at s i sub
-    then Some i
-    else go (i + 1)
-  in
-  go 0
-;;
-
-let contains s sub = find s sub <> None
 
 (* Splits a program at the boundary line into two modules. The second opens the
    first, so code is inlined across modules. *)
 let modules source =
   let boundary = Program.module_boundary in
-  match find source boundary with
+  match Text.find source boundary with
   | None -> [ "prog.ml", source ]
   | Some i ->
-    let j = i + String.length boundary in
+    let after_boundary = i + String.length boundary in
     [ "m1.ml", String.sub source 0 i
-    ; "prog.ml", "open M1\n" ^ String.sub source j (String.length source - j)
+    ; ( "prog.ml"
+      , "open M1\n"
+        ^ String.sub source after_boundary (String.length source - after_boundary) )
     ]
 ;;
 
@@ -114,16 +89,16 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
     (fun () ->
        let prepared =
          List.mapi
-           (fun i b ->
-              let dir = Filename.concat root (string_of_int i) in
+           (fun index b ->
+              let dir = Filename.concat root (string_of_int index) in
               Sys.mkdir dir 0o755;
               let files = modules (source_for b source) in
               List.iter
-                (fun (f, text) ->
-                   Out_channel.with_open_bin (Filename.concat dir f) (fun oc ->
+                (fun (file, text) ->
+                   Out_channel.with_open_bin (Filename.concat dir file) (fun oc ->
                      output_string oc text))
                 files;
-              dir, List.map (fun (f, _) -> Filename.concat dir f) files)
+              dir, List.map (fun (file, _) -> Filename.concat dir file) files)
            backends
        in
        let dirs = List.map fst prepared in
@@ -131,11 +106,13 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
        (* macOS scans each new executable on first launch, which can take up to
           2s. Bytecode avoids this by running prog.exe with ocamlrun. *)
        let run b dir =
-         let c = List.hd b.argv in
-         if String.starts_with ~prefix:"ocamlc" (Filename.basename c)
+         let compiler_path = List.hd b.argv in
+         if String.starts_with ~prefix:"ocamlc" (Filename.basename compiler_path)
          then (
-           let d = List.mem "d" b.argv in
-           [ Filename.concat (Filename.dirname c) (if d then "ocamlrund" else "ocamlrun")
+           let debug_runtime = List.mem "d" b.argv in
+           [ Filename.concat
+               (Filename.dirname compiler_path)
+               (if debug_runtime then "ocamlrund" else "ocamlrun")
            ; exe dir
            ])
          else [ exe dir ]
@@ -162,19 +139,19 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
          match compiles, compiled, runs, ran with
          | [], [], [], _ -> []
          | (_, cout) :: compiles, status :: compiled, None :: runs, ran ->
-           let o, e = cout () in
-           Compile_error [%string "%{show_exit status}\n%{o}%{e}"]
+           let out, err = cout () in
+           Compile_error [%string "%{show_exit status}\n%{out}%{err}"]
            :: combine compiles compiled runs ran
          | _ :: compiles, _ :: compiled, Some (_, rout) :: runs, status :: ran ->
-           let o, e = rout () in
-           Ran (status, o, e) :: combine compiles compiled runs ran
+           let out, err = rout () in
+           Ran (status, out, err) :: combine compiles compiled runs ran
          | _ -> assert false
        in
        combine compiles compiled runs ran
        |> List.map2
             (fun dir -> function
-               | Compile_error msg -> Compile_error (strip ~prefix:(dir ^ "/") msg)
-               | r -> r)
+               | Compile_error msg -> Compile_error (Text.remove_all (dir ^ "/") msg)
+               | result -> result)
             dirs)
 ;;
 

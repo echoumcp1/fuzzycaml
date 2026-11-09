@@ -1,5 +1,4 @@
 open Backend
-open Exec
 
 (* Flags that must not change a program's meaning, mostly off by default. The
    toggles backend draws a few per program. *)
@@ -52,13 +51,13 @@ let help = Hashtbl.create 4
 let supports compiler toggle =
   let text =
     match Hashtbl.find_opt help compiler with
-    | Some t -> t
+    | Some help_text -> help_text
     | None ->
-      let t = Option.value ~default:"" (read_process [| compiler; "-help" |]) in
-      Hashtbl.add help compiler t;
-      t
+      let help_text = Option.value ~default:"" (read_process [| compiler; "-help" |]) in
+      Hashtbl.add help compiler help_text;
+      help_text
   in
-  contains text ("  " ^ List.hd (String.split_on_char ' ' toggle) ^ " ")
+  Text.contains text ("  " ^ List.hd (String.split_on_char ' ' toggle) ^ " ")
 ;;
 
 let with_toggles tc backends =

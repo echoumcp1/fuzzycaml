@@ -1,5 +1,17 @@
 open Config
 
+(* Float-to-integer conversion that saturates, since the result of an
+   out-of-range conversion is unspecified. *)
+let saturating_conversion =
+  {|let fsat w f =
+  let b = Float.ldexp 1. (w - 1) in
+  if Float.is_nan f then 0L
+  else if f >= b then (if w = 64 then Int64.max_int else Int64.pred (Int64.shift_left 1L (w - 1)))
+  else if f < -. b then (if w = 64 then Int64.min_int else Int64.neg (Int64.shift_left 1L (w - 1)))
+  else Int64.of_float f
+|}
+;;
+
 (* Constant folding does not preserve NaN's sign, so all NaNs print as nan.
    compare only specifies the sign (flambda folds it to the difference of
    chars), so its result goes through sgn. *)
@@ -72,13 +84,8 @@ external array_make : ('a : any mod separable). int -> 'a -> 'a array = "%makear
 external array_get : ('a : any mod separable). 'a array -> int -> 'a = "%array_safe_get" [@@layout_poly]
 external array_set : ('a : any mod separable). 'a array -> int -> 'a -> unit = "%array_safe_set" [@@layout_poly]
 external array_length : ('a : any mod separable). 'a array -> int = "%array_length" [@@layout_poly]
-let fsat w f =
-  let b = Float.ldexp 1. (w - 1) in
-  if Float.is_nan f then 0L
-  else if f >= b then (if w = 64 then Int64.max_int else Int64.pred (Int64.shift_left 1L (w - 1)))
-  else if f < -. b then (if w = 64 then Int64.min_int else Int64.neg (Int64.shift_left 1L (w - 1)))
-  else Int64.of_float f
 |}
+    ^ saturating_conversion
   else
     {|external array_make : int -> 'a -> 'a array = "caml_make_vect"
 external array_get : 'a array -> int -> 'a = "%array_safe_get"

@@ -1,4 +1,7 @@
+(include_subdirs unqualified)
+
 (library
  (name fuzzycaml_lib)
  (libraries hegel)
- (preprocess (pps ppx_string)))
+ (preprocess
+  (pps ppx_string)))
