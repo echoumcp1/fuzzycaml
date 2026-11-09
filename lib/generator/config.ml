@@ -42,6 +42,7 @@ let all_features =
   ; "or_null"
   ; "urecords"
   ; "utuples"
+  ; "objects"
   ]
 ;;
 

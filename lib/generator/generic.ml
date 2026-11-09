@@ -411,6 +411,7 @@ let generic ctx env ty gen =
   @ Gadt.forms ctx env ty gen
   @ boost (variant_upcasts env ty gen)
   @ Atomics.forms ctx env ty gen
+  @ Objects.forms ctx env ty gen
   @ Stress.forms ctx env ty gen
   @ Exceptions.forms ctx env ty gen
   @ boost (same_branches env ty gen)
