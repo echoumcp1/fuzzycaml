@@ -35,10 +35,6 @@ let known_compile_crash msg =
    [Effect.Shallow.fiber] performs one itself. Matches only if every crashing
    backend is bytecode and agrees with the others once memprof is off. *)
 let memprof_perform ~rerun backends results source =
-  let bytecode b =
-    is_toplevel b
-    || String.starts_with ~prefix:"ocamlc" (Filename.basename (List.hd b.argv))
-  in
   let crashed, others =
     List.partition
       (fun (_, r) ->
@@ -57,7 +53,7 @@ let memprof_perform ~rerun backends results source =
   | (_, expected) :: _
     when Text.contains source "Gc.Memprof.start"
          && crashed <> []
-         && List.for_all (fun (b, _) -> bytecode b) crashed
+         && List.for_all (fun (b, _) -> is_bytecode b) crashed
          && List.for_all
               (fun r -> observable r = observable expected)
               (rerun ~edit:without_memprof (List.map fst crashed)) ->

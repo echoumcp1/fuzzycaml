@@ -188,6 +188,11 @@ let effect_syntax ~ox backends =
 
 let is_toplevel b = Filename.basename (List.hd b.argv) = "ocaml"
 
+let is_bytecode b =
+  is_toplevel b
+  || String.starts_with ~prefix:"ocamlc" (Filename.basename (List.hd b.argv))
+;;
+
 (* Library features newer compilers add, each with a program that uses it. *)
 let probes =
   [ ( "atomic_loc"

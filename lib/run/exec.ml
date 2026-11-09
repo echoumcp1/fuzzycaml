@@ -15,6 +15,7 @@ type exit =
   | Exited of int
   | Signaled of int
   | Timeout
+  | Hung (* timed out where a backend of the same kind finished quickly *)
 
 let spawn ~dir argv =
   let out = Filename.concat dir [%string "out%{Random.bits ()#Int}"] in
@@ -39,27 +40,40 @@ let spawn ~dir argv =
       , In_channel.with_open_bin err In_channel.input_all ) )
 ;;
 
+(* Each process's exit and how many seconds it ran. *)
 let wait_all ~timeout pids =
-  let deadline = Unix.gettimeofday () +. timeout in
-  let rec wait pid =
-    match Unix.waitpid [ WNOHANG ] pid with
-    | 0, _ when Unix.gettimeofday () > deadline ->
-      Unix.kill pid Sys.sigkill;
-      ignore (Unix.waitpid [] pid);
-      Timeout
-    | 0, _ ->
+  let start = Unix.gettimeofday () in
+  let finished = Array.make (List.length pids) None in
+  let rec poll () =
+    let now = Unix.gettimeofday () in
+    List.iteri
+      (fun i pid ->
+         if Option.is_none finished.(i)
+         then (
+           match Unix.waitpid [ WNOHANG ] pid with
+           | 0, _ when now -. start > timeout ->
+             Unix.kill pid Sys.sigkill;
+             ignore (Unix.waitpid [] pid);
+             finished.(i) <- Some (Timeout, timeout)
+           | 0, _ -> ()
+           | _, WEXITED c -> finished.(i) <- Some (Exited c, now -. start)
+           | _, (WSIGNALED s | WSTOPPED s) ->
+             finished.(i) <- Some (Signaled s, now -. start)))
+      pids;
+    if Array.exists Option.is_none finished
+    then (
       Unix.sleepf 0.002;
-      wait pid
-    | _, WEXITED c -> Exited c
-    | _, (WSIGNALED s | WSTOPPED s) -> Signaled s
+      poll ())
   in
-  List.map wait pids
+  poll ();
+  Array.to_list (Array.map Option.get finished)
 ;;
 
 let show_exit = function
   | Exited c -> [%string "exit %{c#Int}"]
   | Signaled s -> [%string "signal %{s#Int}"]
   | Timeout -> "timeout"
+  | Hung -> "hung while a similar backend finished quickly"
 ;;
 
 type result =
@@ -142,7 +156,7 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
            backends
            prepared
        in
-       let compiled = wait_all ~timeout:120. (List.map fst compiles) in
+       let compiled = List.map fst (wait_all ~timeout:120. (List.map fst compiles)) in
        let runs =
          List.map2
            (fun (b, dir) status ->
@@ -152,7 +166,32 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
            (List.combine backends dirs)
            compiled
        in
-       let ran = wait_all ~timeout:10. (List.filter_map (Option.map fst) runs) in
+       let run_timeout = 10. in
+       let ran = wait_all ~timeout:run_timeout (List.filter_map (Option.map fst) runs) in
+       let ran_backends =
+         List.filter_map
+           (fun (b, run) -> Option.map (fun _ -> b) run)
+           (List.combine backends runs)
+       in
+       (* Bytecode is much slower than native code, so a timeout is compared only
+          with backends of the same kind. The toplevel also compiles as it runs, so
+          it is compared with none. *)
+       let kind b = if is_toplevel b then None else Some (is_bytecode b) in
+       let finished_quickly b =
+         kind b <> None
+         && List.exists2
+              (fun other (status, seconds) ->
+                 kind other = kind b && status <> Timeout && seconds < run_timeout /. 10.)
+              ran_backends
+              ran
+       in
+       let ran =
+         List.map2
+           (fun b (status, _) ->
+              if status = Timeout && finished_quickly b then Hung else status)
+           ran_backends
+           ran
+       in
        let rec combine compiles compiled runs ran =
          match compiles, compiled, runs, ran with
          | [], [], [], _ -> []
