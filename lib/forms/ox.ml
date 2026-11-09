@@ -87,4 +87,6 @@ let unboxed_and_mutable ctx env ty gen =
   else []
 ;;
 
-let forms ctx env ty gen = if !ox_mode then unboxed_and_mutable ctx env ty gen else []
+let forms ctx env ty gen =
+  if !ox_mode then boost (unboxed_and_mutable ctx env ty gen) else []
+;;
