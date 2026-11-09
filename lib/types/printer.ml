@@ -40,20 +40,16 @@ let rec printer = function
 let declaration ?parent i decl =
   match decl with
   | Record fields ->
-    let field_decl (field, field_ty, is_mutable) =
-      [%string {|%{if is_mutable then "mutable " else ""}%{field} : %{field_ty#Ty}|}]
+    let field_decl { name; ty; is_mutable } =
+      [%string {|%{if is_mutable then "mutable " else ""}%{name} : %{ty#Ty}|}]
     in
-    let show (field, field_ty, _) =
-      [%string {|"%{field} = " ^ %{printer field_ty} v.%{field}|}]
-    in
+    let show { name; ty; _ } = [%string {|"%{name} = " ^ %{printer ty} v.%{name}|}] in
     (* OxCaml requires a layout attribute on records of only boxed and unboxed
        floats. *)
-    let has t = List.exists (fun (_, field_ty, _) -> field_ty = t) fields in
+    let has ty = List.exists (fun field -> field.ty = ty) fields in
     let flatten =
       if
-        List.for_all
-          (fun (_, field_ty, _) -> field_ty = Float || field_ty = unboxed_float)
-          fields
+        List.for_all (fun field -> field.ty = Float || field.ty = unboxed_float) fields
         && has Float
         && has unboxed_float
       then Config.ox_syntax " [@@flatten_floats]" ""

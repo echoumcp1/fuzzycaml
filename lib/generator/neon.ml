@@ -46,9 +46,16 @@ type shape =
   | From_one of vector
   | From_two of vector * vector
 
-(* Each op: its name, shape, NEON builtin and lane-wise definition. In the
-   definitions, [w] wraps to the lane width, [u] reads a lane as unsigned, and
-   [on_] and [z_] are a lane of ones and of zeros. *)
+(* An op of a vector module: its name, shape, NEON builtin and lane-wise
+   definition. In the definitions, [w] wraps to the lane width, [u] reads a lane
+   as unsigned, and [on_] and [z_] are a lane of ones and of zeros. *)
+type op =
+  { name : string
+  ; shape : shape
+  ; builtin : string
+  ; definition : string
+  }
+
 let ops vector =
   let native_name = native vector in
   let builtin_name op = "caml_neon_" ^ native_name ^ "_" ^ op in
@@ -187,65 +194,73 @@ let ops vector =
       [ "cmeq", "="; "cmge", ">="; "cmgt", ">"; "cmle", "<="; "cmlt", "<" ]
   in
   let without names = List.filter (fun (op, _, _, _) -> not (List.mem op names)) in
-  match vector with
-  | I8 -> ints @ sat @ minmax @ narrow I16
-  | I16 ->
-    without [ "band"; "bor"; "bxor" ] ints
-    @ sat
-    @ minmax
-    @ [ "mul", Binary, builtin_name "mul_low", lanewise2 "w (x * y)" ]
-    @ widen I8
-    @ narrow I32
-  | I32 ->
-    ints
-    @ minmax
-    @ [ "mul", Binary, builtin_name "mul_low", lanewise2 "w (x * y)"
-      ; "bnot", Unary, builtin_name "bitwise_not", lanewise "lnot x"
-      ; ( "cvtt"
-        , From_one F32
-        , "caml_neon_cvtt_float32x4_to_int32x4"
-        , lanewise "Int64.to_int (fsat 32 x)" )
-      ]
-    @ widen I16
-    @ narrow I64
-    @ fcmp F32
-  | I64 ->
-    ints
-    @ [ "bnot", Unary, builtin_name "bitwise_not", lanewise "lnot x"
-      ; "cvtt", From_one F64, "caml_neon_cvtt_float64x2_to_int64x2", lanewise "fsat 64 x"
-      ; ( "cvtsx"
-        , From_one I32
-        , "caml_neon_cvtsx_int32x4_to_int64x2"
-        , "fun a -> Array.init 2 (fun i -> Int64.of_int a.(i))" )
-      ; ( "cvtzx"
-        , From_one I32
-        , "caml_neon_cvtzx_int32x4_to_int64x2"
-        , "fun a -> Array.init 2 (fun i -> Int64.of_int (Stdlib.( land ) a.(i) \
-           0xffffffff))" )
-      ]
-    @ fcmp F64
-  | F32 ->
-    floats
-    @ [ ( "cvt"
-        , From_one I32
-        , "caml_neon_cvt_int32x4_to_float32x4"
-        , lanewise "r32 (float_of_int x)" )
-      ; ( "of_f64"
-        , From_one F64
-        , "caml_neon_cvt_float64x2_to_float32x2"
-        , "fun a -> Array.init 4 (fun i -> if i < 2 then r32 a.(i) else 0.)" )
-      ]
-  | F64 ->
-    floats
-    @ [ ( "cvt"
-        , From_one I64
-        , "caml_neon_cvt_int64x2_to_float64x2"
-        , lanewise "Int64.to_float x" )
-      ; ( "of_f32"
-        , From_one F32
-        , "caml_neon_cvt_float32x2_to_float64x2"
-        , "fun a -> Array.init 2 (fun i -> a.(i))" )
-      ]
+  let table =
+    match vector with
+    | I8 -> ints @ sat @ minmax @ narrow I16
+    | I16 ->
+      without [ "band"; "bor"; "bxor" ] ints
+      @ sat
+      @ minmax
+      @ [ "mul", Binary, builtin_name "mul_low", lanewise2 "w (x * y)" ]
+      @ widen I8
+      @ narrow I32
+    | I32 ->
+      ints
+      @ minmax
+      @ [ "mul", Binary, builtin_name "mul_low", lanewise2 "w (x * y)"
+        ; "bnot", Unary, builtin_name "bitwise_not", lanewise "lnot x"
+        ; ( "cvtt"
+          , From_one F32
+          , "caml_neon_cvtt_float32x4_to_int32x4"
+          , lanewise "Int64.to_int (fsat 32 x)" )
+        ]
+      @ widen I16
+      @ narrow I64
+      @ fcmp F32
+    | I64 ->
+      ints
+      @ [ "bnot", Unary, builtin_name "bitwise_not", lanewise "lnot x"
+        ; ( "cvtt"
+          , From_one F64
+          , "caml_neon_cvtt_float64x2_to_int64x2"
+          , lanewise "fsat 64 x" )
+        ; ( "cvtsx"
+          , From_one I32
+          , "caml_neon_cvtsx_int32x4_to_int64x2"
+          , "fun a -> Array.init 2 (fun i -> Int64.of_int a.(i))" )
+        ; ( "cvtzx"
+          , From_one I32
+          , "caml_neon_cvtzx_int32x4_to_int64x2"
+          , "fun a -> Array.init 2 (fun i -> Int64.of_int (Stdlib.( land ) a.(i) \
+             0xffffffff))" )
+        ]
+      @ fcmp F64
+    | F32 ->
+      floats
+      @ [ ( "cvt"
+          , From_one I32
+          , "caml_neon_cvt_int32x4_to_float32x4"
+          , lanewise "r32 (float_of_int x)" )
+        ; ( "of_f64"
+          , From_one F64
+          , "caml_neon_cvt_float64x2_to_float32x2"
+          , "fun a -> Array.init 4 (fun i -> if i < 2 then r32 a.(i) else 0.)" )
+        ]
+    | F64 ->
+      floats
+      @ [ ( "cvt"
+          , From_one I64
+          , "caml_neon_cvt_int64x2_to_float64x2"
+          , lanewise "Int64.to_float x" )
+        ; ( "of_f32"
+          , From_one F32
+          , "caml_neon_cvt_float32x2_to_float64x2"
+          , "fun a -> Array.init 2 (fun i -> a.(i))" )
+        ]
+  in
+  List.map
+    (fun (name, shape, builtin, definition) -> { name; shape; builtin; definition })
+    table
 ;;
 
 (* The integer vector whose lanes carry a vector's lanes in and out. *)
@@ -255,11 +270,11 @@ let carrier = function
   | vector -> vector
 ;;
 
-let builtin = {|= "caml_vec128_unreachable" "|}
+let external_prefix = {|= "caml_vec128_unreachable" "|}
 let unboxed = {|" [@@noalloc] [@@unboxed] [@@builtin]|}
 let untagged = {|" [@@noalloc] [@@builtin]|}
 
-let signature ~erase vector (_, shape, _, _) =
+let signature ~erase vector { shape; _ } =
   let ty vector =
     if erase then Ty.to_string (lane vector) ^ " array" else native vector
   in
@@ -288,7 +303,9 @@ let ox_module vector =
     | F64 -> "(int64[@unboxed])", "Int64.bits_of_float", "vnan (Int64.float_of_bits"
   in
   let close = if vector = F32 || vector = F64 then ")" else "" in
-  let cast a b = [%string "external %{a} : %{b} %{builtin}caml_vec128_cast%{unboxed}"] in
+  let cast a b =
+    [%string "external %{a} : %{b} %{external_prefix}caml_vec128_cast%{unboxed}"]
+  in
   let inserts =
     List.init lane_count (fun i ->
       [%string "let v = insert %{i#Int} v (%{lane_in} (f %{i#Int})) in "])
@@ -308,22 +325,24 @@ let ox_module vector =
   in
   let ops =
     List.map
-      (fun ((op, shape, builtin_name, _) as op_info) ->
-         let tail = if shape = Shift then untagged else unboxed in
+      (fun op ->
+         let tail = if op.shape = Shift then untagged else unboxed in
          [%string
-           "external %{op} : %{signature ~erase:false vector op_info} \
-            %{builtin}%{builtin_name}%{tail}\n"])
+           "external %{op.name} : %{signature ~erase:false vector op} \
+            %{external_prefix}%{op.builtin}%{tail}\n"])
       (ops vector)
   in
   [%string
     "module %{name vector} = struct\n\
      type t = %{native vector}\n\
      %{carriers}%{cast \"c_of64\" (\"int64x2 -> \" ^ carrier_name)}\n\
-     external zero : int64 -> int64x2 %{builtin}caml_int64x2_low_of_int64%{unboxed}\n\
+     external zero : int64 -> int64x2 \
+     %{external_prefix}caml_int64x2_low_of_int64%{unboxed}\n\
      external insert : (int[@untagged]) -> (%{carrier_name}[@unboxed]) -> %{lane_param} \
-     -> (%{carrier_name}[@unboxed]) %{builtin}caml_neon_%{carrier_name}_insert%{untagged}\n\
+     -> (%{carrier_name}[@unboxed]) \
+     %{external_prefix}caml_neon_%{carrier_name}_insert%{untagged}\n\
      external extract : (int[@untagged]) -> (%{carrier_name}[@unboxed]) -> %{lane_param} \
-     %{builtin}caml_neon_%{carrier_name}_extract%{untagged}\n\
+     %{external_prefix}caml_neon_%{carrier_name}_extract%{untagged}\n\
      let init f = let v = c_of64 (zero 0L) in %{String.concat \"\" inserts}of_c v\n\
      let get v i = let v = to_c v in match i land %{lane_count - 1#Int} with \
      %{String.concat \"\" extracts}| _ -> assert false\n\
@@ -365,8 +384,9 @@ let erased_module vector =
   (* Annotated, as an op no program uses would keep a weak type. *)
   let ops =
     List.map
-      (fun ((op, _, _, def) as op_info) ->
-         [%string "let %{op} : %{signature ~erase:true vector op_info} = %{def}\n"])
+      (fun op ->
+         [%string
+           "let %{op.name} : %{signature ~erase:true vector op} = %{op.definition}\n"])
       (ops vector)
   in
   [%string
@@ -402,10 +422,10 @@ let symbols () =
       (fun vector ->
          let name = native vector in
          [ "caml_neon_" ^ name ^ "_insert"; "caml_neon_" ^ name ^ "_extract" ]
-         @ List.map (fun (_, _, nat, _) -> nat) (ops vector))
+         @ List.map (fun op -> op.builtin) (ops vector))
       [ I8; I16; I32; I64 ]
   @ List.concat_map
-      (fun vector -> List.map (fun (_, _, nat, _) -> nat) (ops vector))
+      (fun vector -> List.map (fun op -> op.builtin) (ops vector))
       [ F32; F64 ]
   |> List.sort_uniq compare
 ;;

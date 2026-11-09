@@ -3,7 +3,14 @@
    here one generated in its place and kept in [regions], and the output must
    not change. Only the regions drawn as prunable are replaced, so dead code
    also varies. *)
-let regions : (string * (string * bool)) list ref = ref []
+type region =
+  { key : string
+  ; replacement : string
+  ; prunable : bool
+  }
+
+let regions : region list ref = ref []
+let region key = List.find (fun region -> region.key = key) !regions
 let has_regions source = Text.contains source "(*<"
 let hits_tag = "emi hits:"
 
@@ -20,7 +27,7 @@ let () = at_exit (fun () -> prerr_string "\n|}
 |}
   ^ Markers.relabel
       ~opening:"(*<"
-      (fun k -> [%string {|(emi_hit "%{k}"; |}])
+      (fun key -> [%string {|(emi_hit "%{key}"; |}])
       (Markers.relabel ~opening:"(*>" (Fun.const ")") source)
 ;;
 
@@ -38,8 +45,8 @@ let hits err =
 (* The original with each prunable region it never evaluates replaced. *)
 let pruned hits =
   Markers.cut
-    ~by:(fun k -> "(" ^ fst (List.assoc k !regions) ^ ")")
+    ~by:(fun key -> "(" ^ (region key).replacement ^ ")")
     ~opening:"(*<"
     ~closing:"(*>"
-    ~keep:(fun k -> List.mem k hits || not (snd (List.assoc k !regions)))
+    ~keep:(fun key -> List.mem key hits || not (region key).prunable)
 ;;

@@ -4,21 +4,28 @@ open Ctx
 open Gen_ty
 open Env
 
+type binding =
+  { var : string
+  ; var_ty : ty
+  ; value : string
+  }
+
 let bindings ctx gen env count params prefix =
   List.init count (fun _ ->
-    let var_ty, rhs = gen.of_shape env (Any params) in
-    fresh ctx (prefix var_ty), var_ty, rhs)
+    let var_ty, value = gen.of_shape env (Any params) in
+    { var = fresh ctx (prefix var_ty); var_ty; value })
 ;;
 
-let lets vars =
+let lets bindings =
   String.concat
     ""
     (List.map
-       (fun (var, var_ty, rhs) -> [%string "let %{var} : %{var_ty#Ty} = %{rhs} in "])
-       vars)
+       (fun { var; var_ty; value } ->
+          [%string "let %{var} : %{var_ty#Ty} = %{value} in "])
+       bindings)
 ;;
 
-let types vars = List.map (fun (var, var_ty, _) -> var, var_ty) vars
+let types bindings = List.map (fun binding -> binding.var, binding.var_ty) bindings
 
 (* Many ints and floats live across an opaque call, so some must be spilled. *)
 let pressure ctx env ty gen =
@@ -61,14 +68,16 @@ let many_args ctx env ty gen =
   let remaining = fresh ctx "n" in
   let env = closure env in
   let first_count = fresh ctx "m" in
+  (* Each parameter, and the variable bound to its first argument. *)
   let outer_args =
     List.init (int_in ctx 9 14) (fun _ ->
-      let arg_ty, value =
+      let var_ty, value =
         gen.of_shape ~candidates:[ Int; Float ] ~p:0.67 env (Any first_order_types)
       in
-      fresh ctx "a", fresh ctx "b", arg_ty, value)
+      let var = fresh ctx "b" in
+      fresh ctx "a", { var; var_ty; value })
   in
-  let params = List.map (fun (x, _, arg_ty, _) -> x, arg_ty) outer_args in
+  let params = List.map (fun (param, arg) -> param, arg.var_ty) outer_args in
   let body_env = bind_all (bind env remaining Int) params in
   (* Recursive calls mostly pass parameters through, to keep programs small. *)
   let arg arg_ty =
@@ -76,27 +85,21 @@ let many_args ctx env ty gen =
     if flip ~p:0.3 ctx then expr body_env arg_ty else fst (pick ctx same_type)
   in
   let inner_args =
-    List.map (fun (_, arg_ty) -> fresh ctx "b", arg_ty, arg arg_ty) params
+    List.map
+      (fun (_, var_ty) ->
+         let value = arg var_ty in
+         { var = fresh ctx "b"; var_ty; value })
+      params
   in
-  let lets inner_args =
-    String.concat
-      ""
-      (List.map
-         (fun (var, arg_ty, value) ->
-            [%string "let %{var} : %{arg_ty#Ty} = %{value} in "])
-         inner_args)
-  in
-  let outer_lets =
-    lets (List.map (fun (_, var, arg_ty, value) -> var, arg_ty, value) outer_args)
-  in
+  let outer_lets = lets (List.map snd outer_args) in
   let outer_args =
-    String.concat " " (first_count :: List.map (fun (_, var, _, _) -> var) outer_args)
+    String.concat " " (first_count :: List.map (fun (_, arg) -> arg.var) outer_args)
   in
   let inner_lets = lets inner_args in
   let recursive_args =
     String.concat
       " "
-      ([%string "(%{remaining} - 1)"] :: List.map (fun (var, _, _) -> var) inner_args)
+      ([%string "(%{remaining} - 1)"] :: List.map (fun arg -> arg.var) inner_args)
   in
   let head =
     choose ctx [ (fun () -> fn); (fun () -> [%string "(%{fn} [@inlined never])"]) ]

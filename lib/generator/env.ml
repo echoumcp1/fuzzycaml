@@ -9,7 +9,7 @@ type env =
     (* Stack-allocated values, which are only matched on or have an immediate
          field read, so none escapes its region. *)
   ; in_try : bool (* whether a handler for [Exit] is around *)
-  ; handled_effects : (string * ty * ty) list
+  ; handled_effects : effect_decl list
   ; mutables : (string * ty) list (* [let mutable]s, which no closure can use *)
   ; in_fun : bool (* inside a function, which may be called where order matters *)
   }

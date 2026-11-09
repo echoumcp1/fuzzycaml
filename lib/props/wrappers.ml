@@ -5,8 +5,8 @@ open Gen_ty
 open Literal
 open Env
 
-let junk env ty gen = quietly (fun () -> gen.expr (pure env) ty)
-let any_junk env shape gen = quietly (fun () -> gen.of_shape (pure env) shape)
+let junk env ty gen = without_checks (fun () -> gen.expr (pure env) ty)
+let any_junk env shape gen = without_checks (fun () -> gen.of_shape (pure env) shape)
 let value ty = not (restricted ty)
 
 let float_width = function
@@ -66,8 +66,10 @@ let rec layer ctx env ty gen x =
          match decl_def with
          | Record fields ->
            List.filter_map
-             (fun (fn, ft, _) ->
-                if ft = ty then Some (decl, fn, field_types fields, false) else None)
+             (fun (field : record_field) ->
+                if field.ty = ty
+                then Some (decl, field.name, field_types fields, false)
+                else None)
              fields
          | URecord fields ->
            List.filter_map
@@ -114,7 +116,9 @@ let rec layer ctx env ty gen x =
          [%string
            "(let[@inline never] %{fn} (%{var} : %{ty_name}) = %{var} in %{fn} %{x})"])
      ; (fun () ->
-         let junk_expr = quietly (fun () -> gen.expr { env with locals = [] } ty) in
+         let junk_expr =
+           without_checks (fun () -> gen.expr { env with locals = [] } ty)
+         in
          [%string "(if Sys.opaque_identity false then %{junk_expr} else %{x})"])
      ; (fun () -> layer ctx env ty gen (layer ctx env ty gen x))
      ]
@@ -339,15 +343,15 @@ let neutral ctx env ty gen s =
   @@ choose
        ctx
        ([ (fun () ->
-            let junk_expr = quietly (fun () -> gen.expr dead_env ty) in
+            let junk_expr = without_checks (fun () -> gen.expr dead_env ty) in
             [%string "(if Sys.opaque_identity false then %{junk_expr} else %{hole})"])
         ; (fun () ->
-            let junk_expr = quietly (fun () -> gen.expr dead_env ty) in
+            let junk_expr = without_checks (fun () -> gen.expr dead_env ty) in
             [%string
               "(match Sys.opaque_identity 0 with 0 -> %{hole} | _ -> %{junk_expr})"])
         ; (fun () ->
             let _, junk_expr =
-              quietly (fun () -> gen.of_shape dead_env (Any first_order_types))
+              without_checks (fun () -> gen.of_shape dead_env (Any first_order_types))
             in
             [%string
               "(for _ = 1 to Sys.opaque_identity 0 do ignore (%{junk_expr}) done; \

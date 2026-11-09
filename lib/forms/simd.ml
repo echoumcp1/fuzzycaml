@@ -19,7 +19,7 @@ let simd ctx env ty gen =
     else (
       let smaller = vector_tree (depth - 1) in
       let op () =
-        let op, shape, _, _ = pick ctx (Neon.ops vector) in
+        let { Neon.name = op; shape; _ } = pick ctx (Neon.ops vector) in
         match shape with
         | Unary -> [%string "(%{module_}.%{op} %{smaller vector})"]
         | Binary ->

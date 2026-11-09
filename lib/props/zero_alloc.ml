@@ -12,13 +12,13 @@ let test ctx env gen =
   let params = List.init (int_in ctx 1 3) (fun _ -> fresh ctx "a", any_type ctx) in
   let result = any_type ctx in
   let strict = if flip ctx then " strict" else "" in
-  let body = quietly (fun () -> gen.expr (bind_all (closure env) params) result) in
+  let body = without_checks (fun () -> gen.expr (bind_all (closure env) params) result) in
   let args =
     String.concat
       " "
       (List.map
          (fun (_, param_ty) ->
-            [%string "(%{quietly (fun () -> gen.expr (pure env) param_ty)})"])
+            [%string "(%{without_checks (fun () -> gen.expr (pure env) param_ty)})"])
          params)
   in
   let param_decls =

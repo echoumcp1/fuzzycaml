@@ -4,6 +4,27 @@ open Ctx
 open Gen_ty
 open Env
 
+type kind =
+  | Positional
+  | Labeled
+  | Optional
+
+type argument =
+  { positional : bool
+  ; text : string
+  }
+
+(* A parameter, with its declaration and, unless it is optional, the argument
+   drawn with it. *)
+type param =
+  { name : string
+  ; ty : ty
+  ; kind : kind
+  ; decl : string
+  ; fixed_arg : argument option
+  }
+
+(* A function applied to its arguments in several steps. *)
 let partial ctx env ty gen =
   let expr = gen.expr in
   let fn = fresh ctx "f" in
@@ -15,39 +36,43 @@ let partial ctx env ty gen =
          let param = fresh ctx "a" in
          let kind =
            if i = arity - 1
-           then `Positional
+           then Positional
            else
              choose
                ctx
-               [ (fun () -> `Positional); (fun () -> `Labeled); (fun () -> `Optional) ]
+               [ (fun () -> Positional); (fun () -> Labeled); (fun () -> Optional) ]
          in
-         let param_ty, decl, arg =
+         let param_ty, decl, fixed_arg =
            match kind with
-           | `Positional ->
+           | Positional ->
              let param_ty, arg = gen.of_shape env (Any all_types) in
-             param_ty, [%string "(%{param} : %{param_ty#Ty})"], Some (true, paren arg)
-           | `Labeled ->
+             ( param_ty
+             , [%string "(%{param} : %{param_ty#Ty})"]
+             , Some { positional = true; text = paren arg } )
+           | Labeled ->
              let param_ty, arg = gen.of_shape env (Any value_types) in
              ( param_ty
              , [%string "~(%{param} : %{param_ty#Ty})"]
-             , Some (false, [%string "~%{param}:(%{arg})"]) )
-           | `Optional ->
+             , Some { positional = false; text = [%string "~%{param}:(%{arg})"] } )
+           | Optional ->
              let param_ty, default = gen.of_shape env (Any value_types) in
              param_ty, [%string "?(%{param} : %{param_ty#Ty} = %{default})"], None
          in
-         params @ [ param, param_ty, kind, decl, arg ], bind body_env param param_ty)
+         ( params @ [ { name = param; ty = param_ty; kind; decl; fixed_arg } ]
+         , bind body_env param param_ty ))
       ([], env)
       (List.init arity Fun.id)
   in
-  let arg ~omittable (param, param_ty, kind, _, arg) =
-    match kind with
-    | `Positional | `Labeled -> arg
-    | `Optional ->
+  let arg ~omittable param =
+    let labeled text = Some { positional = false; text } in
+    match param.kind with
+    | Positional | Labeled -> param.fixed_arg
+    | Optional ->
       choose
         ctx
-        ([ (fun () -> Some (false, [%string "~%{param}:(%{expr env param_ty})"]))
-         ; (fun () -> Some (false, [%string "?%{param}:(Some %{expr env param_ty})"]))
-         ; (fun () -> Some (false, [%string "?%{param}:None"]))
+        ([ (fun () -> labeled [%string "~%{param.name}:(%{expr env param.ty})"])
+         ; (fun () -> labeled [%string "?%{param.name}:(Some %{expr env param.ty})"])
+         ; (fun () -> labeled [%string "?%{param.name}:None"])
          ]
          @ if omittable then [ (fun () -> None) ] else [])
   in
@@ -55,16 +80,16 @@ let partial ctx env ty gen =
   let rec args = function
     | [] -> []
     | param :: rest ->
-      let omittable = List.exists (fun (_, _, kind, _, _) -> kind = `Positional) rest in
+      let omittable = List.exists (fun param -> param.kind = Positional) rest in
       let arg = arg ~omittable param in
       Option.to_list arg @ args rest
   in
   (* Labeled arguments commute; positional ones keep their order. *)
   let shuffle args =
     let moved, kept =
-      List.partition (fun (pos, _) -> (not pos) && flip ~p:0.3 ctx) args
+      List.partition (fun arg -> (not arg.positional) && flip ~p:0.3 ctx) args
     in
-    String.concat " " (List.map snd (kept @ moved))
+    String.concat " " (List.map (fun arg -> arg.text) (kept @ moved))
   in
   let rec chunks = function
     | [] -> []
@@ -104,7 +129,7 @@ let partial ctx env ty gen =
         [%string "(%{head} %{first})"]
         rest
   in
-  let decls = String.concat " " (List.map (fun (_, _, _, decl, _) -> decl) params) in
+  let decls = String.concat " " (List.map (fun param -> param.decl) params) in
   [%string "(let%{attr} %{fn} %{decls} : %{ty#Ty} = %{expr body_env ty} in %{call})"]
 ;;
 

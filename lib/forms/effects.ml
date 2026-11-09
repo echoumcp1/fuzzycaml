@@ -17,7 +17,7 @@ let handler_setup ctx env =
 ;;
 
 let computation ctx env handled gen =
-  let results = List.map (fun (_, _, result) -> result) handled in
+  let results = List.map (fun effect_ -> effect_.result) handled in
   gen.of_shape
     ~candidates:(results @ candidates ctx env first_order_ty)
     ~p:0.95
@@ -26,7 +26,7 @@ let computation ctx env handled gen =
 ;;
 
 (* The bound value, continuation and body of a handler's arm for one effect. *)
-let arm_body ctx env ty expr ~resume ~discontinue (_, arg, result) =
+let arm_body ctx env ty expr ~resume ~discontinue { arg; result; _ } =
   let payload = fresh ctx "v" in
   let continuation = fresh ctx "k" in
   let arm_env = bind env payload arg in
@@ -59,12 +59,12 @@ let exception_handler env ty expr catches_exit =
   else "raise"
 ;;
 
-let perform_let ctx env expr (con, arg, result) ty =
+let perform_let ctx env expr { constructor; arg; result } ty =
   let performed = fresh ctx "y" in
   let body = expr (bind env performed result) ty in
   [%string
-    "(let %{performed} : %{result#Ty} = Effect.perform (%{con} %{expr env arg}) in \
-     %{body})"]
+    "(let %{performed} : %{result#Ty} = Effect.perform (%{constructor} %{expr env arg}) \
+     in %{body})"]
 ;;
 
 let handler ctx env ty gen =
@@ -72,17 +72,17 @@ let handler ctx env ty gen =
   let handled, catches_exit, body_env = handler_setup ctx env in
   let returned = fresh ctx "x" in
   let exnc = exception_handler env ty expr catches_exit in
-  let arm ((constructor, _, _) as effect_) =
-    let v, k, body =
+  let arm ({ constructor; _ } as effect_) =
+    let payload, continuation, body =
       arm_body ctx env ty expr ~resume:deep_resume ~discontinue:true effect_
     in
     [%string
-      "| %{constructor} %{v} -> Some (fun (%{k} : (a, %{ty#Ty}) \
+      "| %{constructor} %{payload} -> Some (fun (%{continuation} : (a, %{ty#Ty}) \
        Effect.Deep.continuation) -> %{body})"]
   in
   let arms = String.concat " " (List.map arm handled) in
   let body_ty, body =
-    let constructor, arg, result = pick ctx handled in
+    let { constructor; arg; result } = pick ctx handled in
     if flip ctx
     then (
       let performed = fresh ctx "y" in
@@ -108,11 +108,13 @@ let shallow ctx env ty gen =
   let returned = fresh ctx "x" in
   let exnc = exception_handler env ty expr catches_exit in
   let body_ty, body = computation ctx body_env handled gen in
-  let arm ((constructor, _, _) as effect_) =
-    let resume k v _ = [%string "%{continue_} %{k} %{v}"] in
-    let v, k, body = arm_body ctx env ty expr ~resume ~discontinue:false effect_ in
+  let arm ({ constructor; _ } as effect_) =
+    let resume continuation value _ = [%string "%{continue_} %{continuation} %{value}"] in
+    let payload, continuation, body =
+      arm_body ctx env ty expr ~resume ~discontinue:false effect_
+    in
     [%string
-      "| %{constructor} %{v} -> Some (fun (%{k} : (a, %{body_ty#Ty}) \
+      "| %{constructor} %{payload} -> Some (fun (%{continuation} : (a, %{body_ty#Ty}) \
        Effect.Shallow.continuation) -> %{body})"]
   in
   let arms = String.concat " " (List.map arm handled) in
@@ -131,11 +133,11 @@ let effect_match ctx env ty gen =
   let handled, catches_exit, body_env = handler_setup ctx env in
   let returned = fresh ctx "x" in
   let body_ty, body = computation ctx body_env handled gen in
-  let arm ((constructor, _, _) as effect_) =
-    let v, k, body =
+  let arm ({ constructor; _ } as effect_) =
+    let payload, continuation, body =
       arm_body ctx env ty expr ~resume:deep_resume ~discontinue:true effect_
     in
-    [%string "| effect %{constructor} %{v}, %{k} -> %{body}"]
+    [%string "| effect %{constructor} %{payload}, %{continuation} -> %{body}"]
   in
   let exit_arm =
     if catches_exit then [%string " | exception Exit -> %{expr env ty}"] else ""

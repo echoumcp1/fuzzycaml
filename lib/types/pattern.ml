@@ -22,7 +22,7 @@ let gen_decl ctx =
            then unboxed ()
            else first_order_type ctx
          in
-         field, field_ty, flip ~p:0.3 ctx)))
+         { name = field; ty = field_ty; is_mutable = flip ~p:0.3 ctx })))
   else (
     let poly = (not !ox_mode) && on "poly" && flip ~p:0.35 ctx in
     let own_constructors () =
@@ -139,9 +139,7 @@ let rec pattern ?(at_root = false) ctx ty depth ~binds =
                | [] -> [ List.hd fields ]
                | picked -> picked
              in
-             let parts =
-               List.map (fun (field, field_ty, _) -> field, smaller field_ty) picked
-             in
+             let parts = List.map (fun field -> field.name, smaller field.ty) picked in
              ( Printf.sprintf
                  "{ %s_ }"
                  (String.concat
