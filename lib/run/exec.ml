@@ -116,7 +116,7 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
        let run b dir =
          let compiler_path = List.hd b.argv in
          if is_toplevel b
-         then b.argv @ [ "-w"; "-a"; Filename.concat dir "prog.ml" ]
+         then b.argv @ [ "-w"; "-a"; "-nocwd"; Filename.concat dir "prog.ml" ]
          else if String.starts_with ~prefix:"ocamlc" (Filename.basename compiler_path)
          then (
            let debug_runtime = List.mem "d" b.argv in
@@ -133,7 +133,12 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
               if is_toplevel b
               then spawn ~dir [ "/usr/bin/true" ]
               else
-                spawn ~dir (b.argv @ [ "-w"; "-a"; "-I"; dir ] @ files @ [ "-o"; exe dir ]))
+                spawn
+                  ~dir
+                  (b.argv
+                   @ [ "-w"; "-a"; "-nocwd"; "-I"; dir ]
+                   @ files
+                   @ [ "-o"; exe dir ]))
            backends
            prepared
        in
