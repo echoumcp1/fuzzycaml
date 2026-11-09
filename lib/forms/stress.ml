@@ -131,8 +131,21 @@ let gc ctx env ty gen =
     "(%{lets allocations}%{gc}; %{gen.expr (bind_all env (types allocations)) ty})"]
 ;;
 
-(* An interrupt callback may raise in the middle of it, and then it runs again. *)
-let interrupted env ty gen = [%string "(attempt (fun () -> %{gen.expr (pure env) ty}))"]
+(* An interrupt callback may raise in the middle of it, and then it runs again. A
+   lazy from outside is left out: interrupted while forcing it, it would raise
+   [Sys.Break] again when the retry forces it. *)
+let interrupted env ty gen =
+  let env = pure env in
+  let env =
+    { env with
+      vars =
+        List.filter
+          (fun (var, _) -> not (String.starts_with ~prefix:"(Lazy.force " var))
+          env.vars
+    }
+  in
+  [%string "(attempt (fun () -> %{gen.expr env ty}))"]
+;;
 
 let forms ctx env ty gen =
   let value = not (restricted ty) in
