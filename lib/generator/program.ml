@@ -234,7 +234,7 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   declare_types ctx items ~ox;
   if on "interrupts" then interrupt_callbacks ctx items;
   let depth = int_in ctx 2 7 in
-  if (not ox) && on "effects" then declare_effects ctx items;
+  if on "effects" then declare_effects ctx items;
   let env =
     ref
       { vars = []

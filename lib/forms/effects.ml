@@ -67,7 +67,11 @@ let perform_let ctx env expr { constructor; arg; result } ty =
      in %{body})"]
 ;;
 
+(* The computation, arms and [retc] are closures. *)
+let without_captures env = { env with locals = []; mutables = [] }
+
 let handler ctx env ty gen =
+  let env = without_captures env in
   let expr = gen.expr in
   let handled, catches_exit, body_env = handler_setup ctx env in
   let returned = fresh ctx "x" in
@@ -101,6 +105,7 @@ let handler ctx env ty gen =
 ;;
 
 let shallow ctx env ty gen =
+  let env = without_captures env in
   let expr = gen.expr in
   let handled, catches_exit, body_env = handler_setup ctx env in
   let continue_ = fresh ctx "go" in
