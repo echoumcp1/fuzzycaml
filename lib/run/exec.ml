@@ -67,16 +67,18 @@ type result =
   | Ran of exit * string * string
 
 (* Splits a program at the boundary line into two modules. The second opens the
-   first, so code is inlined across modules. *)
-let modules source =
+   first, so code is inlined across modules. File names differ per backend. *)
+let modules ~index source =
+  let suffix = if index = 0 then "" else [%string "_%{index#Int}"] in
+  let main = [%string "prog%{suffix}.ml"] in
   let boundary = Program.module_boundary in
   match Text.find source boundary with
-  | None -> [ "prog.ml", source ]
+  | None -> [ main, source ]
   | Some i ->
     let after_boundary = i + String.length boundary in
-    [ "m1.ml", String.sub source 0 i
-    ; ( "prog.ml"
-      , "open M1\n"
+    [ [%string "m1%{suffix}.ml"], String.sub source 0 i
+    ; ( main
+      , [%string "open M1%{suffix}\n"]
         ^ String.sub source after_boundary (String.length source - after_boundary) )
     ]
 ;;
@@ -97,7 +99,7 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
               let files =
                 if is_toplevel b
                 then [ "prog.ml", source_for b source ]
-                else modules (source_for b source)
+                else modules ~index (source_for b source)
               in
               List.iter
                 (fun (file, text) ->
