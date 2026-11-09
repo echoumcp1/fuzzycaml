@@ -173,10 +173,12 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
            (fun (b, run) -> Option.map (fun _ -> b) run)
            (List.combine backends runs)
        in
-       (* Bytecode is much slower than native code, so a timeout is compared only
-          with backends of the same kind. The toplevel also compiles as it runs, so
-          it is compared with none. *)
-       let kind b = if is_toplevel b then None else Some (is_bytecode b) in
+       (* Bytecode and the debug runtime are much slower, so a timeout is compared
+          only with backends of the same kind. The toplevel also compiles as it
+          runs, so it is compared with none. *)
+       let kind b =
+         if is_toplevel b then None else Some (is_bytecode b, List.mem "d" b.argv)
+       in
        let finished_quickly b =
          kind b <> None
          && List.exists2
