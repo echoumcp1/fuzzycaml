@@ -16,15 +16,16 @@ dune exec bin/fuzzycaml.exe -- [--sample] [--ox] [TEST_CASES]
 - `TEST_CASES`: number of programs to try (default 200, or 5 with `--sample`).
 - `--sample`: print the generated programs instead of testing them, separated by `(* ---- *)`.
 - `--ox`: generate OxCaml-only features and test only OxCaml (flambda2) switches.
+- `--props`: check one OxCaml compiler against itself: wrappers that keep a program's meaning, `[@zero_alloc]` functions that must not allocate, the program with OxCaml syntax and optimization hints erased (built with `-Oclassic`), and the program with code it never runs replaced must all print the same output.
 
 Environment variables:
 - `FUZZYCAML_SWITCHES=a,b`: use only these opam switches, in this order; the first is the reference.
 - `FUZZYCAML_EXTRA="name=compiler flags;..."`: add backends.
 - `FUZZYCAML_DATABASE=dir`: save failures in Hegel's database at `dir`, so a later run replays them first.
 - `FUZZYCAML_REPLAY=blob`: replay a failure blob (printed after a failure as `rerun with`) and report it as is, without shrinking; fails if it no longer reproduces.
-- `FUZZYCAML_FEATURES=a,b`: enable these features in every program (see `all_features` in `lib/config.ml`).
-- `FUZZYCAML_SAVE=dir`: write programs that hit a known bug to `dir/known<pid>-<n>.ml`.
-- `FUZZYCAML_FIXED_OCLASSIC=<ocamlopt>`: a compiler with the flambda `-Oclassic` constant field fix (see Known bugs).
+- `FUZZYCAML_FEATURES=a,b`: enable these features in every program (see `all_features` in `lib/generator/config.ml`).
+- `FUZZYCAML_SAVE=dir`: write programs that hit a known bug to `dir/known<pid>-<n>.ml`, and rejected ones to `dir/rejected<pid>-<n>.ml`.
+- `FUZZYCAML_FIXED_OCLASSIC=<ocamlopt>`: a compiler with the flambda `-Oclassic` constant field fix (see `lib/run/known.ml`).
 
 ## Long runs
 
@@ -41,7 +42,7 @@ Output in `<dir>`:
 ```
 w<w>-<i>.log   log of worker w's i-th fuzzer; a failure ends with the shrunk program
 db/w<w>-<i>/   its Hegel database, which keeps the failure even if the log is cut short
-known/         programs that hit known bugs
+known/         programs that hit known bugs or were rejected
 fuzz.exe       the binary the workers run
 stop           create this file to stop the run
 ```
@@ -51,32 +52,15 @@ stop           create this file to stop the run
 # Layout
 
 ```
-bin/fuzzycaml.ml   command line
-lib/backend.ml     backend discovery
-lib/exec.ml        compiling and running programs on every backend
-lib/toggles.ml     the toggles backend's flags
-lib/known.ml       known bug filters
-lib/check.ml       checking one program
-lib/config.ml      global state: OxCaml mode, enabled features, properties of declared types
-lib/ty.ml          types, number conversions, type predicates
-lib/printer.ml     value printers and type declarations
-lib/prelude.ml     helper definitions at the start of every program
-lib/draw.ml        Hegel draws
-lib/ctx.ml         generation context and drawing helpers
-lib/gen_ty.ml      types: drawn, or recorded forced at a position whose type the context fixes
-lib/literal.ml     literals
-lib/pattern.ml     declared types and patterns
-lib/env.ml         variables in scope
-lib/effects.ml     effect handlers
-lib/gadt.ml        GADT terms
-lib/ox.ml          OxCaml-only expressions
-lib/stress.ml      expressions aimed at the backend (spills, many arguments, GC, string loads)
-lib/forms.ml       other expression forms (partial application, atomics, exceptions, lazy, recursive values, TMC)
-lib/specific.ml    operations on each type
-lib/generic.ml     forms at any type (let, if, match, functions, loops, try)
-lib/expr.ml        expression generator
-lib/program.ml     whole programs
-run.sh, watch.sh   long runs
+bin/fuzzycaml.ml      command line
+lib/text.ml           string search
+lib/run/              backend discovery and flags, compiling and running, known bugs, checking
+lib/types/            types, literals, patterns, printers, drawing types
+lib/generator/        generation state, prelude, expressions and whole programs
+lib/generator/neon.ml arm64 vectors: NEON builtins, and lane-wise versions for the erased program
+lib/forms/            one module per generator feature
+lib/props/            versions of a program for --props: wrappers, EMI, zero_alloc tests
+run.sh, watch.sh      long runs
 ```
 
 # Generated programs
@@ -104,21 +88,29 @@ context fixes the type (e.g. the operands of `+`) and drawn where it does not (e
 an expression is a leaf is a choice to allow the shrinker to trim expression trees. Different choices can give the same
 program, so the fuzzer compiles each program once and caches the result.
 
+## Props mode
+With `--props`, each program is compiled in several versions that must print the same output:
+- Original: the program as generated, compiled by the toggles backend. It includes `[@zero_alloc]` functions, each called between two reads of the allocation counter; one that allocates prints a failure.
+- Variant: values wrapped in code that returns them unchanged, such as `(try raise (E x) with E v -> v)`. Some wrappers also print a failure if the value changed.
+- Erased: OxCaml syntax replaced by plain OCaml (`let local_ p = stack_ (a, b)` becomes `let p = (a, b)`), optimization hints removed, built with `-Oclassic` and by upstream OCaml.
+- EMI (equivalence modulo inputs): some expressions are marked as regions. A coverage run of the original records which regions it evaluates, and every region it never reached is replaced by a literal of the same type. Since that code never runs, the output must not change, but the compiler sees a different program to optimize. If the coverage run does not finish, nothing is replaced.
+
 # Backends
 Each opam switch adds these backends:
-- Without `--ox` (OxCaml switches are skipped): `ocamlc`, `ocamlopt`, `ocamlopt -linscan`. Non-flambda switches add `ocamlopt -unsafe -inline 1000`. Flambda switches add `-O3`, `-Oclassic`, `-O3 -linscan`, and an aggressive `-O3`.
+- Without `--ox` (OxCaml switches are skipped): `ocamlc`, `ocamlopt`, `ocamlopt -linscan`. Non-flambda switches add `ocamlopt -unsafe -inline 1000`, `-compact -no-float-const-prop -no-insn-sched` and `-inline 200 -g`. Flambda switches add `-O3`, `-Oclassic`, `-O3 -linscan`, and an aggressive `-O3`.
 - With `--ox` (flambda2 switches only): `ocamlc`, `ocamlopt` at `-Oclassic`, the default level and `-O3`, and a toggles backend that draws an optimization level and a set of flags for each program.
+- Both add the toplevel, `ocaml`, which runs the program as a script.
 
-`ocamlc` and one native backend per switch use the debug runtime. `ocamlopt` runs with `-dcmm-invariants`, and flambda backends also with `-dflambda-invariants`. The first backend is the reference. A release `ocamlc` can be added as a second reference with `FUZZYCAML_EXTRA`; a mismatch against it alone may be a bug fixed in trunk.
+`ocamlc` and one native backend per switch use the debug runtime. `ocamlopt` runs with `-dcmm-invariants`, and flambda backends also with `-dflambda-invariants`. The first backend that compiles is the reference. A release `ocamlc` can be added as a second reference with `FUZZYCAML_EXTRA`; a mismatch against it alone may be a bug fixed in trunk.
 
 Backends compile in parallel in separate temporary directories with `-w -a` and a cleaned environment. Compilation times out after 120 s and execution after 10 s. Programs that time out are discarded.
 
 # Results
 For each program, in order:
-1. No backend compiled it: failure (compiler crash if any output has `Fatal error`, generator bug otherwise).
+1. No backend compiled it: failure if any output has `Fatal error` or an assembler or linker error; otherwise a generator bug, which is saved and skipped.
 2. A run timed out: discarded.
 3. It matches a known bug: discarded and counted.
 4. A backend was killed by a signal or raised an uncaught exception other than `Exit`: failure.
 5. Backends differ in compile result, exit status, or output: failure.
 
-During shrinking, only the reference and the first disagreeing backend are run. The report shows the shrunk program, the backends grouped by result, and a `failure_blobs` line that reproduces it. At the end, the fuzzer prints how many programs it ran and compiled, timed out, and matched known bugs.
+During shrinking, only the reference and the first disagreeing backend are run. The report shows the shrunk program, the backends grouped by result, and a `failure_blobs` line that reproduces it. At the end, the fuzzer prints how many programs it ran and compiled, timed out, matched known bugs, and were rejected.

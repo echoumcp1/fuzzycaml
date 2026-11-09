@@ -1,0 +1,140 @@
+open Config
+
+(* Float-to-integer conversion that saturates, since the result of an
+   out-of-range conversion is unspecified. *)
+let saturating_conversion =
+  {|let fsat w f =
+  let b = Float.ldexp 1. (w - 1) in
+  if Float.is_nan f then 0L
+  else if f >= b then (if w = 64 then Int64.max_int else Int64.pred (Int64.shift_left 1L (w - 1)))
+  else if f < -. b then (if w = 64 then Int64.min_int else Int64.neg (Int64.shift_left 1L (w - 1)))
+  else Int64.of_float f
+|}
+;;
+
+let vector_modules ~erase =
+  if !props && !neon && on "simd" then Neon.prelude ~erase else ""
+;;
+
+(* Constant folding does not preserve NaN's sign, so all NaNs print as nan.
+   compare only specifies the sign (flambda folds it to the difference of
+   chars), so its result goes through sgn. *)
+let prelude () =
+  {|let show_float f = if Float.is_nan f then "nan" else Printf.sprintf "%h" f
+let sdiv a b = if b = 0 then a else a / b
+let smod a b = if b = 0 then a else a mod b
+let sgn c = if c < 0 then -1 else if c > 0 then 1 else 0
+let i64div a b = if b = 0L then a else Int64.div a b
+let i64rem a b = if b = 0L then a else Int64.rem a b
+let ssub s i n = let l = String.length s in let i = (i land max_int) mod (l + 1) in String.sub s i ((n land max_int) mod (l - i + 1))
+let ticks = ref 0
+let obs = ref 0
+let observe s = obs := !obs + Hashtbl.hash s
+let rec take n l = if n <= 0 then [] else match l with [] -> [] | x :: r -> x :: take (n - 1) r
+type _ gx =
+  | GInt : int -> int gx
+  | GBool : bool -> bool gx
+  | GAdd : int gx * int gx -> int gx
+  | GLe : int gx * int gx -> bool gx
+  | GIf : bool gx * 'a gx * 'a gx -> 'a gx
+  | GPair : 'a gx * 'b gx -> ('a * 'b) gx
+  | GFst : ('a * 'b) gx -> 'a gx
+  | GSnd : ('a * 'b) gx -> 'b gx
+  | GLit : 'a -> 'a gx
+let rec geval : type a. a gx -> a = function
+  | GInt n -> n
+  | GBool b -> b
+  | GAdd (a, b) -> let x = geval a in x + geval b
+  | GLe (a, b) -> let x = geval a in x <= geval b
+  | GIf (c, a, b) -> if geval c then geval a else geval b
+  | GPair (a, b) -> let x = geval a in (x, geval b)
+  | GFst q -> fst (geval q)
+  | GSnd q -> snd (geval q)
+  | GLit v -> v
+let gbump : type a. a gx -> a -> a = fun g v ->
+  match g with GInt _ -> v + 1 | GBool _ -> not v | GAdd _ -> v - 1 | GLe _ -> v | _ -> v
+type _ aw = AwFloat : float aw | AwInt : int aw | AwAny : 'a aw
+let arr_of : type a. a aw -> int -> a -> a array = fun w n x ->
+  match w with
+  | AwFloat -> Array.make n (x +. 0.)
+  | AwInt -> Array.make n (x + 0)
+  | AwAny -> Array.make n x
+let arr_get : type a. a aw -> a array -> int -> a = fun w a i ->
+  let i = (i land max_int) mod Array.length a in
+  match w with AwFloat -> a.(i) | AwInt -> a.(i) | AwAny -> a.(i)
+let[@inline never] arr_poly n x = Array.make n x
+let[@inline never] arr_copy a = Array.map (fun x -> x) a
+|}
+  ^ (if has "atomic_loc"
+     then
+       "type atomics = { mutable ai : int [@atomic]; mutable ab : bool [@atomic]; \
+        mutable ap : int }\n"
+     else "")
+  ^
+  if !ox_mode && !erase
+  then
+    (* The unboxed modules erased to their boxed counterparts. *)
+    {|let box_float x = x
+let unbox_float x = x
+let[@inline always] fu_add x y = x +. y
+let[@inline always] fu_sub x y = x -. y
+let[@inline always] fu_mul x y = Sys.opaque_identity (x *. y)
+let[@inline never] fu_div x y = x /. y
+let fu_sqrt x = sqrt x
+module F32 = Stdlib_stable.Float32
+module I8 = Stdlib_stable.Int8
+module I16 = Stdlib_stable.Int16
+module F32u = struct include F32 let of_float32 x = x let to_float32 x = x end
+module I8u = struct include I8 let of_int8 x = x let to_int8 x = x end
+module I16u = struct include I16 let of_int16 x = x let to_int16 x = x end
+module Iu = struct include Int let of_int x = x let to_int x = x end
+module Fu = struct include Float let of_float x = x let to_float x = x end
+module I32u = struct include Int32 let of_int32 x = x let to_int32 x = x end
+module I64u = struct include Int64 let of_int64 x = x let to_int64 x = x end
+module Natu = struct include Nativeint let of_nativeint x = x let to_nativeint x = x end
+external array_make : int -> 'a -> 'a array = "caml_make_vect"
+external array_get : 'a array -> int -> 'a = "%array_safe_get"
+external array_set : 'a array -> int -> 'a -> unit = "%array_safe_set"
+external array_length : 'a array -> int = "%array_length"
+|}
+    ^ saturating_conversion
+    ^ vector_modules ~erase:true
+  else if !ox_mode
+  then
+    {|external box_float : float# -> (float[@local_opt]) = "%box_float"
+external unbox_float : (float[@local_opt]) -> float# = "%unbox_float"
+let[@inline always] fu_add x y = unbox_float (box_float x +. box_float y)
+let[@inline always] fu_sub x y = unbox_float (box_float x -. box_float y)
+let[@inline always] fu_mul x y = unbox_float (Sys.opaque_identity (box_float x *. box_float y))
+let[@inline never] fu_div x y = unbox_float (box_float x /. box_float y)
+let fu_sqrt x = unbox_float (sqrt (box_float x))
+module F32 = Stdlib_stable.Float32
+module F32u = Stdlib_stable.Float32_u
+module I8 = Stdlib_stable.Int8
+module I8u = Stdlib_stable.Int8_u
+module I16 = Stdlib_stable.Int16
+module I16u = Stdlib_stable.Int16_u
+module Iu = Stdlib_stable.Int_u
+module Fu = Stdlib_upstream_compatible.Float_u
+module I32u = Stdlib_upstream_compatible.Int32_u
+module I64u = Stdlib_upstream_compatible.Int64_u
+module Natu = Stdlib_upstream_compatible.Nativeint_u
+external array_make : ('a : any mod separable). int -> 'a -> 'a array = "%makearray_dynamic" [@@layout_poly]
+external array_get : ('a : any mod separable). 'a array -> int -> 'a = "%array_safe_get" [@@layout_poly]
+external array_set : ('a : any mod separable). 'a array -> int -> 'a -> unit = "%array_safe_set" [@@layout_poly]
+external array_length : ('a : any mod separable). 'a array -> int = "%array_length" [@@layout_poly]
+|}
+    ^ (if !props
+       then
+         {|external minor_words : unit -> float# = "caml_gc_minor_words" "caml_gc_minor_words_unboxed"
+|}
+       else "")
+    ^ saturating_conversion
+    ^ vector_modules ~erase:false
+  else
+    {|external array_make : int -> 'a -> 'a array = "caml_make_vect"
+external array_get : 'a array -> int -> 'a = "%array_safe_get"
+external array_set : 'a array -> int -> 'a -> unit = "%array_safe_set"
+external array_length : 'a array -> int = "%array_length"
+|}
+;;
