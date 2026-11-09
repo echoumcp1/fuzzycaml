@@ -88,6 +88,13 @@ context fixes the type (e.g. the operands of `+`) and drawn where it does not (e
 an expression is a leaf is a choice to allow the shrinker to trim expression trees. Different choices can give the same
 program, so the fuzzer compiles each program once and caches the result.
 
+## Props mode
+With `--props`, each program is compiled in several versions that must print the same output:
+- Original: the program as generated, compiled by the toggles backend. It includes `[@zero_alloc]` functions, each called between two reads of the allocation counter; one that allocates prints a failure.
+- Variant: values wrapped in code that returns them unchanged, such as `(try raise (E x) with E v -> v)`. Some wrappers also print a failure if the value changed.
+- Erased: OxCaml syntax replaced by plain OCaml (`let local_ p = stack_ (a, b)` becomes `let p = (a, b)`), optimization hints removed, built with `-Oclassic` and by upstream OCaml.
+- EMI (equivalence modulo inputs): some expressions are marked as regions. A coverage run of the original records which regions it evaluates, and every region it never reached is replaced by a literal of the same type. Since that code never runs, the output must not change, but the compiler sees a different program to optimize. If the coverage run does not finish, nothing is replaced.
+
 # Backends
 Each opam switch adds these backends:
 - Without `--ox` (OxCaml switches are skipped): `ocamlc`, `ocamlopt`, `ocamlopt -linscan`. Non-flambda switches add `ocamlopt -unsafe -inline 1000`, `-compact -no-float-const-prop -no-insn-sched` and `-inline 200 -g`. Flambda switches add `-O3`, `-Oclassic`, `-O3 -linscan`, and an aggressive `-O3`.
