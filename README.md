@@ -87,8 +87,9 @@ program, so the fuzzer compiles each program once and caches the result.
 
 # Backends
 Each opam switch adds these backends:
-- Without `--ox` (OxCaml switches are skipped): `ocamlc`, `ocamlopt`, `ocamlopt -linscan`. Non-flambda switches add `ocamlopt -unsafe -inline 1000`. Flambda switches add `-O3`, `-Oclassic`, `-O3 -linscan`, and an aggressive `-O3`.
+- Without `--ox` (OxCaml switches are skipped): `ocamlc`, `ocamlopt`, `ocamlopt -linscan`. Non-flambda switches add `ocamlopt -unsafe -inline 1000`, `-compact -no-float-const-prop -no-insn-sched` and `-inline 200 -g`. Flambda switches add `-O3`, `-Oclassic`, `-O3 -linscan`, and an aggressive `-O3`.
 - With `--ox` (flambda2 switches only): `ocamlc`, `ocamlopt` at `-Oclassic`, the default level and `-O3`, and a toggles backend that draws an optimization level and a set of flags for each program.
+- Both add the toplevel, `ocaml`, which runs the program as a script.
 
 `ocamlc` and one native backend per switch use the debug runtime. `ocamlopt` runs with `-dcmm-invariants`, and flambda backends also with `-dflambda-invariants`. The first backend that compiles is the reference. A release `ocamlc` can be added as a second reference with `FUZZYCAML_EXTRA`; a mismatch against it alone may be a bug fixed in trunk.
 

@@ -67,6 +67,11 @@ let discover ~ox =
         ; argv = (ocamlc :: libs ".cma") @ [ "-runtime-variant"; "d" ]
         }
       in
+      let toplevel =
+        { name = [%string "%{switch}/ocaml"]
+        ; argv = Filename.concat bin "ocaml" :: libs ".cma"
+        }
+      in
       if ox
       then
         if not flambda2
@@ -77,11 +82,12 @@ let discover ~ox =
           ; opt "" []
           ; opt "-O3" [ "-O3" ]
           ; opt "-toggles" []
+          ; toplevel
           ]
       else if flambda2
       then []
       else
-        [ byte; opt "" []; opt "-linscan" [ "-linscan" ] ]
+        [ byte; opt "" []; opt "-linscan" [ "-linscan" ]; toplevel ]
         @
         if flambda
         then
@@ -107,6 +113,8 @@ let discover ~ox =
         else
           (* Programs do not rely on bounds checks. *)
           [ opt "-unsafe-inline" [ "-unsafe"; "-inline"; "1000"; "-runtime-variant"; "d" ]
+          ; opt "-compact" [ "-compact"; "-no-float-const-prop"; "-no-insn-sched" ]
+          ; opt "-inline-g" [ "-inline"; "200"; "-g" ]
           ]))
 ;;
 
@@ -140,3 +148,5 @@ let effect_syntax ~ox backends =
           | None -> false)
        backends
 ;;
+
+let is_toplevel b = Filename.basename (List.hd b.argv) = "ocaml"

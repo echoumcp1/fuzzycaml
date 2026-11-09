@@ -92,7 +92,13 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
            (fun index b ->
               let dir = Filename.concat root (string_of_int index) in
               Sys.mkdir dir 0o755;
-              let files = modules (source_for b source) in
+              (* The toplevel takes one script, so the program is not split into
+                 modules. *)
+              let files =
+                if is_toplevel b
+                then [ "prog.ml", source_for b source ]
+                else modules (source_for b source)
+              in
               List.iter
                 (fun (file, text) ->
                    Out_channel.with_open_bin (Filename.concat dir file) (fun oc ->
@@ -107,7 +113,9 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
           2s. Bytecode avoids this by running prog.exe with ocamlrun. *)
        let run b dir =
          let compiler_path = List.hd b.argv in
-         if String.starts_with ~prefix:"ocamlc" (Filename.basename compiler_path)
+         if is_toplevel b
+         then b.argv @ [ "-w"; "-a"; Filename.concat dir "prog.ml" ]
+         else if String.starts_with ~prefix:"ocamlc" (Filename.basename compiler_path)
          then (
            let debug_runtime = List.mem "d" b.argv in
            [ Filename.concat
@@ -120,7 +128,10 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
        let compiles =
          List.map2
            (fun b (dir, files) ->
-              spawn ~dir (b.argv @ [ "-w"; "-a"; "-I"; dir ] @ files @ [ "-o"; exe dir ]))
+              if is_toplevel b
+              then spawn ~dir [ "/usr/bin/true" ]
+              else
+                spawn ~dir (b.argv @ [ "-w"; "-a"; "-I"; dir ] @ files @ [ "-o"; exe dir ]))
            backends
            prepared
        in
@@ -147,7 +158,16 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
            Ran (status, out, err) :: combine compiles compiled runs ran
          | _ -> assert false
        in
+       (* The toplevel reports a type error or compiler crash when it runs. *)
+       let compiled_late b = function
+         | Ran ((Exited 2 as status), out, err)
+           when is_toplevel b
+                && (Text.contains err "Error:" || Text.contains err ">> Fatal error") ->
+           Compile_error [%string "%{show_exit status}\n%{out}%{err}"]
+         | result -> result
+       in
        combine compiles compiled runs ran
+       |> List.map2 compiled_late backends
        |> List.map2
             (fun dir -> function
                | Compile_error msg -> Compile_error (Text.remove_all (dir ^ "/") msg)
