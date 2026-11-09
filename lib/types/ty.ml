@@ -60,7 +60,6 @@ type decl =
   | Variant of (string * ty list) list
   | URecord of (string * ty) list
 
-(* A record's fields as names and types, the form [URecord] keeps them in. *)
 let field_types fields = List.map (fun field -> field.name, field.ty) fields
 
 let num_name = function

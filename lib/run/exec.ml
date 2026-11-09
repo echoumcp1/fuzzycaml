@@ -40,7 +40,6 @@ let spawn ~dir argv =
       , In_channel.with_open_bin err In_channel.input_all ) )
 ;;
 
-(* Each process's exit and how many seconds it ran. *)
 let wait_all ~timeout pids =
   let start = Unix.gettimeofday () in
   let finished = Array.make (List.length pids) None in
@@ -131,7 +130,7 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
          let compiler_path = List.hd b.argv in
          if is_toplevel b
          then b.argv @ [ "-w"; "-a"; "-nocwd"; Filename.concat dir "prog.ml" ]
-         else if String.starts_with ~prefix:"ocamlc" (Filename.basename compiler_path)
+         else if is_bytecode b
          then (
            let debug_runtime = List.mem "d" b.argv in
            [ Filename.concat
