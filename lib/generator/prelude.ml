@@ -12,6 +12,10 @@ let saturating_conversion =
 |}
 ;;
 
+let vector_modules ~erase =
+  if !props && !neon && on "simd" then Neon.prelude ~erase else ""
+;;
+
 (* Constant folding does not preserve NaN's sign, so all NaNs print as nan.
    compare only specifies the sign (flambda folds it to the difference of
    chars), so its result goes through sgn. *)
@@ -94,6 +98,7 @@ external array_set : 'a array -> int -> 'a -> unit = "%array_safe_set"
 external array_length : 'a array -> int = "%array_length"
 |}
     ^ saturating_conversion
+    ^ vector_modules ~erase:true
   else if !ox_mode
   then
     {|external box_float : float# -> (float[@local_opt]) = "%box_float"
@@ -125,6 +130,7 @@ external array_length : ('a : any mod separable). 'a array -> int = "%array_leng
 |}
        else "")
     ^ saturating_conversion
+    ^ vector_modules ~erase:false
   else
     {|external array_make : int -> 'a -> 'a array = "caml_make_vect"
 external array_get : 'a array -> int -> 'a = "%array_safe_get"

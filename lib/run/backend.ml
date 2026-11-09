@@ -29,6 +29,20 @@ let switch_bin switch =
   |> Option.map (fun bin -> switch, bin)
 ;;
 
+(* NEON builtins compile to instructions, but the object file still names
+   their symbols, so the linker needs empty definitions. Built once. *)
+let neon_stubs =
+  lazy
+    (let dir = Filename.temp_dir "fuzzycaml" "neon" in
+     let c = Filename.concat dir "neon_stubs.c" in
+     let o = Filename.concat dir "neon_stubs.o" in
+     Out_channel.with_open_bin c (fun oc ->
+       List.iter (fun s -> Printf.fprintf oc "void %s(void) {}\n" s) (Neon.symbols ()));
+     if Sys.command (Filename.quote_command "cc" [ "-c"; c; "-o"; o ]) <> 0
+     then failwith "could not compile the NEON stubs";
+     o)
+;;
+
 let discover ~ox =
   let switches =
     match read_process [| "opam"; "switch"; "list"; "-s" |] with
@@ -51,18 +65,21 @@ let discover ~ox =
       let config var = read_process [| ocamlopt; "-config-var"; var |] in
       let flambda2 = config "flambda2" = Some "true" in
       let flambda = config "flambda" = Some "true" || flambda2 in
+      let neon = ox && flambda2 && config "architecture" = Some "arm64" in
+      if neon then Config.neon := true;
       let libs ext =
         if ox
         then
-          [ "-extension"
-          ; "comprehensions"
-          ; "-I"
-          ; "+stdlib_stable"
-          ; "-I"
-          ; "+stdlib_upstream_compatible"
-          ; "stdlib_stable" ^ ext
-          ; "stdlib_upstream_compatible" ^ ext
-          ]
+          (if neon then [ "-extension"; "simd_beta" ] else [])
+          @ [ "-extension"
+            ; "comprehensions"
+            ; "-I"
+            ; "+stdlib_stable"
+            ; "-I"
+            ; "+stdlib_upstream_compatible"
+            ; "stdlib_stable" ^ ext
+            ; "stdlib_upstream_compatible" ^ ext
+            ]
         else []
       in
       let nat flags =
@@ -70,6 +87,7 @@ let discover ~ox =
          :: "-dcmm-invariants"
          :: (if flambda then [ "-dflambda-invariants" ] else []))
         @ libs ".cmxa"
+        @ (if neon then [ Lazy.force neon_stubs ] else [])
         @ flags
       in
       let opt suffix flags =

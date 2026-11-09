@@ -57,6 +57,7 @@ lib/text.ml           string search
 lib/run/              backend discovery and flags, compiling and running, known bugs, checking
 lib/types/            types, literals, patterns, printers, drawing types
 lib/generator/        generation state, prelude, expressions and whole programs
+lib/generator/neon.ml arm64 vectors: NEON builtins, and lane-wise versions for the erased program
 lib/forms/            one module per generator feature
 lib/props/            versions of a program for --props: wrappers, EMI, zero_alloc tests
 run.sh, watch.sh      long runs

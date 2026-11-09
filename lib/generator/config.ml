@@ -68,6 +68,7 @@ let all_features =
   ; "interrupts"
   ; "bigarrays"
   ; "comprehensions"
+  ; "simd"
   ]
 ;;
 
@@ -77,6 +78,9 @@ let on feature = List.mem feature !features
 (* Library features that every backend's compiler has, found by [Backend.probe]. *)
 let available : string list ref = ref []
 let has feature = List.mem feature !available
+
+(* Whether the OxCaml backends target arm64, whose vector builtins [Neon] declares. *)
+let neon = ref false
 
 (* Variant constructors declared with an inline record. *)
 let inline_records : string list ref = ref []
