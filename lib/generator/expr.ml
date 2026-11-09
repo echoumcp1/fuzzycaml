@@ -101,7 +101,27 @@ and at ctx env ?candidates ?p ?(local = false) ?alt shape depth =
     else (
       match Option.bind alt (fun alt -> alt ty) with
       | Some build -> ty, build (), false
-      | None -> ty, body ctx env ty depth, false))
+      | None ->
+        let code = body ctx env ty depth in
+        (* A value the program would drop still reaches the output through [observe].
+           Like [ticks], additions commute and only happen where order cannot matter. *)
+        let code =
+          if
+            on "observe"
+            && first_order ty
+            && (not (restricted ty))
+            && (not env.in_try)
+            && (not env.in_fun)
+            && env.handled_effects = []
+            && flip ~p:0.1 ctx
+          then (
+            let observed = fresh ctx "o" in
+            [%string
+              "(let %{observed} = %{code} in observe (%{Printer.printer ty} \
+               %{observed}); %{observed})"])
+          else code
+        in
+        ty, code, false))
 
 and gen ctx depth =
   { expr =

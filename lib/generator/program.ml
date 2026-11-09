@@ -257,5 +257,6 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
         "let %{var} : %{ty#Ty} = %{rhs}\nlet () = print_endline (%{printer ty} %{var})\n"];
     env := bind !env var ty);
   if on "effargs" then add_item items "let () = print_endline (string_of_int !ticks)\n";
+  if on "observe" then add_item items "let () = print_endline (string_of_int !obs)\n";
   head ^ conversion_definitions () ^ assemble (List.rev items.items)
 ;;

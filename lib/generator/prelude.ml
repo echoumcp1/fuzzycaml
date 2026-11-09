@@ -24,6 +24,8 @@ let i64div a b = if b = 0L then a else Int64.div a b
 let i64rem a b = if b = 0L then a else Int64.rem a b
 let ssub s i n = let l = String.length s in let i = (i land max_int) mod (l + 1) in String.sub s i ((n land max_int) mod (l - i + 1))
 let ticks = ref 0
+let obs = ref 0
+let observe s = obs := !obs + Hashtbl.hash s
 let rec take n l = if n <= 0 then [] else match l with [] -> [] | x :: r -> x :: take (n - 1) r
 type _ gx =
   | GInt : int -> int gx
