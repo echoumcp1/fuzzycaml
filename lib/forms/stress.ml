@@ -131,9 +131,14 @@ let gc ctx env ty gen =
     "(%{lets allocations}%{gc}; %{gen.expr (bind_all env (types allocations)) ty})"]
 ;;
 
+(* An interrupt callback may raise in the middle of it, and then it runs again. *)
+let interrupted env ty gen = [%string "(attempt (fun () -> %{gen.expr (pure env) ty}))"]
+
 let forms ctx env ty gen =
   let value = not (restricted ty) in
   (if first_order ty then [ (fun () -> pressure ctx env ty gen) ] else [])
   @ (if value && on "manyargs" then [ (fun () -> many_args ctx env ty gen) ] else [])
   @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty gen) ] else [])
+  @ boost
+      (if value && on "interrupts" then [ (fun () -> interrupted env ty gen) ] else [])
 ;;
