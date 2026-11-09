@@ -43,6 +43,7 @@ let all_features =
   ; "urecords"
   ; "utuples"
   ; "objects"
+  ; "functors"
   ]
 ;;
 
