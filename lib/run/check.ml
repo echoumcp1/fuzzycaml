@@ -52,10 +52,13 @@ let compiling version b = { b with name = b.name ^ name_suffix version; version 
 
 (* The versions of a generated program that its source does not hold. The
    erased version is generated separately and the EMI version after a coverage
-   run, and both lose the zero_alloc tests the checker rejects. *)
+   run, and both lose the zero_alloc tests the checker rejects. The coverage run
+   uses [profiler], the toggles backend without its drawn flags, so that a
+   miscompiled profile is not blamed on the EMI version. *)
 type versions =
   { mutable erased : string
   ; mutable emi : string
+  ; profiler : backend option
   }
 
 (* In props mode, backends other than the toggles one are upstream compilers,
@@ -72,9 +75,9 @@ let for_upstream source =
 
 let generate ~ox ~effect_syntax backends tc =
   let upstreams, backends = List.partition upstream backends in
+  let versions = { erased = ""; emi = ""; profiler = List.nth_opt backends 0 } in
   let backends = if ox then with_toggles tc backends else backends in
   let source = Program.program ~ox ~effect_syntax tc in
-  let versions = { erased = ""; emi = "" } in
   let backends =
     if !Config.props
     then (
@@ -117,14 +120,12 @@ let check_source ~ox tc backends source versions =
   in
   incr compiled;
   (* -dcmm-invariants rejects calls that return unboxed tuples or records. *)
-  let backends =
+  let checkable b =
     if ox && (Text.contains source "#(" || Text.contains source "#{")
-    then
-      List.map
-        (fun b -> { b with argv = List.filter (( <> ) "-dcmm-invariants") b.argv })
-        backends
-    else backends
+    then { b with argv = List.filter (( <> ) "-dcmm-invariants") b.argv }
+    else b
   in
+  let backends = List.map checkable backends in
   let source_for b source =
     let source = version_source versions b source in
     let source = if upstream b then for_upstream source else source in
@@ -137,23 +138,26 @@ let check_source ~ox tc backends source versions =
   in
   (* Compiles again without the zero_alloc test whose function the checker
      rejects, if any. *)
+  let has_emi = List.exists (fun b -> b.version = Emi) backends in
+  (* The regions the original evaluates. When the coverage run does not finish,
+     nothing is pruned. *)
+  let hits =
+    match versions.profiler with
+    | Some profiler when has_emi ->
+      (match
+         run_all [ checkable profiler ] (Emi.covered (Markers.without_wrappers source))
+       with
+       | [ Ran (Exited (0 | 2), _, err) ] -> Emi.hits err
+       | _ -> None)
+    | _ -> None
+  in
   let rec compile source =
-    (* The coverage run decides what the EMI version prunes. When it does not
-       finish, nothing is pruned. *)
-    List.iter
-      (fun b ->
-         if b.version = Emi
-         then (
-           let original = Markers.without_wrappers source in
-           let hits =
-             match run_all [ b ] (Emi.covered original) with
-             | [ Ran (Exited (0 | 2), _, err) ] -> Emi.hits err
-             | _ -> None
-           in
-           versions.emi
-           <- Option.fold ~none:original ~some:(fun hits -> Emi.pruned hits original) hits;
-           note tc ("(* emi *)\n" ^ Markers.clean versions.emi)))
-      backends;
+    if has_emi
+    then (
+      let original = Markers.without_wrappers source in
+      versions.emi
+      <- Option.fold ~none:original ~some:(fun hits -> Emi.pruned hits original) hits;
+      note tc ("(* emi *)\n" ^ Markers.clean versions.emi));
     let results = run_all ~source_for backends source in
     let rejected =
       List.find_map

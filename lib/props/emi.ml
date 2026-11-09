@@ -1,7 +1,8 @@
 (* Equivalence modulo inputs: an expression between (*<k*) and (*>k*) that the
    original never evaluates can be replaced with any value of its type, here the
-   literal in [regions], and the output must not change. *)
-let regions : (string * string) list ref = ref []
+   literal in [regions], and the output must not change. Only the regions drawn
+   as prunable are replaced, so dead code also varies. *)
+let regions : (string * (string * bool)) list ref = ref []
 let has_regions source = Text.contains source "(*<"
 let hits_tag = "emi hits:"
 
@@ -33,11 +34,11 @@ let hits err =
     (Text.find err hits_tag)
 ;;
 
-(* The original with each region it never evaluates replaced. *)
+(* The original with each prunable region it never evaluates replaced. *)
 let pruned hits =
   Markers.cut
-    ~by:(fun k -> "(" ^ List.assoc k !regions ^ ")")
+    ~by:(fun k -> "(" ^ fst (List.assoc k !regions) ^ ")")
     ~opening:"(*<"
     ~closing:"(*>"
-    ~keep:(fun k -> List.mem k hits)
+    ~keep:(fun k -> List.mem k hits || not (snd (List.assoc k !regions)))
 ;;

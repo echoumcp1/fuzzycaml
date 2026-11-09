@@ -127,7 +127,9 @@ and at ctx env ?candidates ?p ?(local = false) ?alt shape depth =
           then (
             let key = fresh ctx "emi" in
             let replacement = literal ctx ty in
-            if not !erase then Emi.regions := (key, replacement) :: !Emi.regions;
+            let prunable = flip ctx in
+            if not !erase
+            then Emi.regions := (key, (replacement, prunable)) :: !Emi.regions;
             Markers.region key code)
           else code
         in
