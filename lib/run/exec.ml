@@ -16,6 +16,7 @@ type exit =
   | Signaled of int
   | Timeout
   | Hung (* timed out where a backend of the same kind finished quickly *)
+  | Out_of_memory
 
 let spawn ~dir argv =
   let out = Filename.concat dir [%string "out%{Random.bits ()#Int}"] in
@@ -40,20 +41,44 @@ let spawn ~dir argv =
       , In_channel.with_open_bin err In_channel.input_all ) )
 ;;
 
-let wait_all ~timeout pids =
+let resident_mb pids =
+  let pids = String.concat "," (List.map string_of_int pids) in
+  (* ps exits 1 when one of the processes has finished, so its status is ignored. *)
+  let ic = Unix.open_process_args_in "ps" [| "ps"; "-o"; "pid=,rss="; "-p"; pids |] in
+  let out = In_channel.input_all ic in
+  ignore (Unix.close_process_in ic);
+  String.split_on_char '\n' out
+  |> List.filter_map (fun line ->
+    Scanf.sscanf_opt line " %d %d" (fun pid kb -> pid, kb / 1024))
+;;
+
+let wait_all ?max_mb ~timeout pids =
   let start = Unix.gettimeofday () in
   let finished = Array.make (List.length pids) None in
+  let last_memory_check = ref start in
   let rec poll () =
     let now = Unix.gettimeofday () in
+    let over_memory =
+      match max_mb with
+      | Some max_mb when now -. !last_memory_check > 0.5 ->
+        last_memory_check := now;
+        List.filter_map
+          (fun (pid, mb) -> if mb > max_mb then Some pid else None)
+          (resident_mb pids)
+      | _ -> []
+    in
+    let kill pid status =
+      Unix.kill pid Sys.sigkill;
+      ignore (Unix.waitpid [] pid);
+      Some (status, now -. start)
+    in
     List.iteri
       (fun i pid ->
          if Option.is_none finished.(i)
          then (
            match Unix.waitpid [ WNOHANG ] pid with
-           | 0, _ when now -. start > timeout ->
-             Unix.kill pid Sys.sigkill;
-             ignore (Unix.waitpid [] pid);
-             finished.(i) <- Some (Timeout, timeout)
+           | 0, _ when now -. start > timeout -> finished.(i) <- kill pid Timeout
+           | 0, _ when List.mem pid over_memory -> finished.(i) <- kill pid Out_of_memory
            | 0, _ -> ()
            | _, WEXITED c -> finished.(i) <- Some (Exited c, now -. start)
            | _, (WSIGNALED s | WSTOPPED s) ->
@@ -73,6 +98,7 @@ let show_exit = function
   | Signaled s -> [%string "signal %{s#Int}"]
   | Timeout -> "timeout"
   | Hung -> "hung while a similar backend finished quickly"
+  | Out_of_memory -> "used over 2GB while another backend compiled quickly"
 ;;
 
 type result =
@@ -155,7 +181,31 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
            backends
            prepared
        in
-       let compiled = List.map fst (wait_all ~timeout:120. (List.map fst compiles)) in
+       let compile_timeout = 120. in
+       let compiled =
+         wait_all ~max_mb:2048 ~timeout:compile_timeout (List.map fst compiles)
+       in
+       (* A compile that times out or runs out of memory is a compiler bug when
+          another backend compiled the program quickly, and a program too big to
+          compile otherwise. *)
+       let compiled =
+         let compiled_quickly =
+           List.exists2
+             (fun b (status, seconds) ->
+                (not (is_toplevel b))
+                && status = Exited 0
+                && seconds < compile_timeout /. 10.)
+             backends
+             compiled
+         in
+         List.map
+           (fun (status, _) ->
+              match status with
+              | Timeout when compiled_quickly -> Hung
+              | Out_of_memory when not compiled_quickly -> Timeout
+              | status -> status)
+           compiled
+       in
        let runs =
          List.map2
            (fun (b, dir) status ->
