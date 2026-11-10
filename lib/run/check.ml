@@ -242,7 +242,7 @@ let check_source ~ox tc backends source versions =
             Option.map
               (fun bug -> b, bug)
               (match result with
-               | Compile_error msg -> known_compile_crash msg
+               | Compile_error msg -> known_backend_crash b msg
                | Ran (_, _, err) ->
                  if Text.contains err "Dead variable in bound pattern"
                  then Some "reaper: dead variable"
