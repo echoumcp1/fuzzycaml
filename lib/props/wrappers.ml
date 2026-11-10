@@ -278,8 +278,8 @@ let rec layer ctx env ty gen x =
              let pair = fresh ctx "p" in
              let _, junk_expr = any_junk env (Any value_types) gen in
              [%string
-               "(let local_ %{pair} = stack_ (%{x}, %{junk_expr}) in let (%{var}, _) = \
-                %{pair} in %{var})"])
+               "(let local_ %{pair} = stack_ ((%{x} : %{ty_name}), %{junk_expr}) in let \
+                (%{var}, _) = %{pair} in %{var})"])
          ]
      @ gate
          (fields_of_ty <> [])
