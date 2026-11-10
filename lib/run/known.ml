@@ -30,6 +30,19 @@ let known_compile_crash msg =
     ]
 ;;
 
+(* The SSA validator reports a mismatch on correct code when caml_apply takes the
+   inline fast path. *)
+let known_backend_crash b msg =
+  match known_compile_crash msg with
+  | Some _ as found -> found
+  | None ->
+    if
+      List.mem "-caml-apply-inline-fast-path" b.argv
+      && Text.contains msg "CFG comparison MISMATCH"
+    then Some "SSA validator with the caml_apply fast path"
+    else None
+;;
+
 (* Bytecode: a memprof callback that grows a fiber's stack during the
    allocation in [perform] leaves the continuation on the freed stack.
    [Effect.Shallow.fiber] performs one itself. Matches only if every crashing
@@ -131,7 +144,7 @@ let known_bug ~rerun backends results source =
                       | Compile_error msg
                         when List.mem "-flambda2-reaper" b.argv || List.mem "-O4" b.argv
                         ->
-                        (match known_compile_crash msg with
+                        (match known_backend_crash b msg with
                          | Some _ as found -> found
                          | None ->
                            if
@@ -139,7 +152,7 @@ let known_bug ~rerun backends results source =
                              || Text.contains msg "undefined reference"
                            then Some "reaper: undefined symbol"
                            else None)
-                      | Compile_error msg -> known_compile_crash msg
+                      | Compile_error msg -> known_backend_crash b msg
                       (* -flambda2-reaper with phantom lets aborts at run time. *)
                       | Ran (_, _, err) ->
                         if Text.contains err "Dead variable in bound pattern"
