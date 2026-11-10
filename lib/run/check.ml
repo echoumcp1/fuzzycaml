@@ -218,7 +218,14 @@ let check_source ~ox tc backends source versions =
     assume tc false
   in
   let crashed msg =
-    List.exists (Text.contains msg) [ "Fatal error"; "Assembler error"; "linking" ]
+    List.exists
+      (Text.contains msg)
+      [ "Fatal error"
+      ; "Assembler error"
+      ; "linking"
+      ; show_exit Hung
+      ; show_exit Out_of_memory
+      ]
   in
   (* Runs [backends] again on their versions of the program, edited. *)
   let rerun ~edit backends =
