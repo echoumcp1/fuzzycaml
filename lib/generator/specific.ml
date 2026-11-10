@@ -283,12 +283,12 @@ let unboxed_float_forms ctx env ty gen =
 let array_forms ctx env ty gen elem_ty =
   let expr = gen.expr in
   let length () = [%string "(1 + (%{expr env Int} land 7))"] in
+  (* An unboxed product array needs its element layout, which [raise Exit] doesn't fix. *)
+  let elem () = [%string "(%{expr env elem_ty} : %{elem_ty#Ty})"] in
   [ (fun () ->
-      let elems =
-        String.concat "; " (List.init (int_in ctx 1 3) (fun _ -> expr env elem_ty))
-      in
+      let elems = String.concat "; " (List.init (int_in ctx 1 3) (fun _ -> elem ())) in
       [%string "[| %{elems} |]"])
-  ; (fun () -> [%string "(array_make %{length ()} %{expr env elem_ty})"])
+  ; (fun () -> [%string "(array_make %{length ()} %{elem ()})"])
   ; (fun () ->
       (* Each index comes from the loop, so it is in bounds. *)
       let array_var = fresh ctx "a" in
@@ -300,15 +300,15 @@ let array_forms ctx env ty gen elem_ty =
           elem_ty
       in
       [%string
-        "(let %{array_var} = array_make %{length ()} %{expr env elem_ty} in for \
-         %{loop_var} = 0 to array_length %{array_var} - 1 do array_set %{array_var} \
-         %{loop_var} %{expr loop_env elem_ty} done; %{array_var})"])
+        "(let %{array_var} = array_make %{length ()} %{elem ()} in for %{loop_var} = 0 \
+         to array_length %{array_var} - 1 do array_set %{array_var} %{loop_var} %{expr \
+         loop_env elem_ty} done; %{array_var})"])
   ; (fun () ->
       (* The index may be past the end. *)
       let array_var = fresh ctx "a" in
       [%string
-        "(let %{array_var} = array_make %{length ()} %{expr env elem_ty} in (try \
-         array_set %{array_var} (%{expr env Int} land 15) %{expr env elem_ty} with \
+        "(let %{array_var} = array_make %{length ()} %{elem ()} in (try array_set \
+         %{array_var} (%{expr env Int} land 15) %{expr env elem_ty} with \
          Invalid_argument _ -> ()); %{array_var})"])
   ]
   @ (match elem_ty with
