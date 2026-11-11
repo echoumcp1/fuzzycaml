@@ -56,8 +56,15 @@ let wait_all ?max_mb ~timeout pids =
   let start = Unix.gettimeofday () in
   let finished = Array.make (List.length pids) None in
   let last_memory_check = ref start in
+  (* Polls are milliseconds apart, so a longer gap means the machine slept, and
+     that time does not count against the timeout. *)
+  let last_poll = ref start in
+  let asleep = ref 0. in
   let rec poll () =
     let now = Unix.gettimeofday () in
+    if now -. !last_poll > 1. then asleep := !asleep +. (now -. !last_poll);
+    last_poll := now;
+    let elapsed = now -. start -. !asleep in
     let over_memory =
       match max_mb with
       | Some max_mb when now -. !last_memory_check > 0.5 ->
@@ -70,19 +77,18 @@ let wait_all ?max_mb ~timeout pids =
     let kill pid status =
       Unix.kill pid Sys.sigkill;
       ignore (Unix.waitpid [] pid);
-      Some (status, now -. start)
+      Some (status, elapsed)
     in
     List.iteri
       (fun i pid ->
          if Option.is_none finished.(i)
          then (
            match Unix.waitpid [ WNOHANG ] pid with
-           | 0, _ when now -. start > timeout -> finished.(i) <- kill pid Timeout
+           | 0, _ when elapsed > timeout -> finished.(i) <- kill pid Timeout
            | 0, _ when List.mem pid over_memory -> finished.(i) <- kill pid Out_of_memory
            | 0, _ -> ()
-           | _, WEXITED c -> finished.(i) <- Some (Exited c, now -. start)
-           | _, (WSIGNALED s | WSTOPPED s) ->
-             finished.(i) <- Some (Signaled s, now -. start)))
+           | _, WEXITED c -> finished.(i) <- Some (Exited c, elapsed)
+           | _, (WSIGNALED s | WSTOPPED s) -> finished.(i) <- Some (Signaled s, elapsed)))
       pids;
     if Array.exists Option.is_none finished
     then (
