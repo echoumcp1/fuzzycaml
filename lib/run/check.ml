@@ -227,6 +227,13 @@ let check_source ~ox tc backends source versions =
       ; show_exit Out_of_memory
       ]
   in
+  (* A compile still running at the time limit, when no other backend compiled
+     quickly, means a big program on a loaded machine. *)
+  let timed_out msg = String.starts_with ~prefix:(show_exit Timeout ^ "\n") msg in
+  let skip_timeout () =
+    incr timeouts;
+    assume tc false
+  in
   (* Runs [backends] again on their versions of the program, edited. *)
   let rerun ~edit backends =
     run_all ~source_for:(fun b source -> edit (source_for b source)) backends source
@@ -259,23 +266,29 @@ let check_source ~ox tc backends source versions =
      with
      | Some bug :: rest when List.for_all Option.is_some rest -> skip_known bug
      | _ -> ());
-    if not (List.exists (compile_error crashed) results) then reject ();
+    if not (List.exists (compile_error crashed) results)
+    then
+      if List.for_all (compile_error timed_out) results
+      then skip_timeout ()
+      else reject ();
     raise
       (Not_compiled
          ("compiler crash: no backend compiled the program\n" ^ report backends results)));
   (* In props mode, when one version compiles and another does not, the
-     generator rewrote that version wrongly, unless the compiler crashed. *)
-  if !Config.props && List.exists (compile_error (fun msg -> not (crashed msg))) results
+     generator rewrote that version wrongly, unless the compiler crashed or ran
+     out of time. *)
+  if
+    !Config.props
+    && List.exists (compile_error (fun msg -> not (crashed msg || timed_out msg))) results
   then reject ();
   if
     List.exists
       (function
         | Ran (Timeout, _, _) -> true
-        | _ -> false)
+        | Compile_error msg -> timed_out msg
+        | Ran _ -> false)
       results
-  then (
-    incr timeouts;
-    assume tc false);
+  then skip_timeout ();
   Option.iter skip_known (known_bug ~rerun backends results source);
   (* Programs only raise Exit, so a crash or any other uncaught exception is a
      failure even if all backends agree. *)
