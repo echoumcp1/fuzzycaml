@@ -18,3 +18,7 @@ Compiler bugs found by fuzzycaml that had not been reported before.
 - [oxcaml/oxcaml#7895](https://github.com/oxcaml/oxcaml/issues/7895): the toplevel crashes with `Bytegen.merge_repr` on an unused `float#` let after an unknown call.
 - [oxcaml/oxcaml#7921](https://github.com/oxcaml/oxcaml/issues/7921): a method passing an unboxed float constant to a function aborts at run time with `[flambda2] Invalid code`.
 - [oxcaml/oxcaml#7927](https://github.com/oxcaml/oxcaml/issues/7927): with `-use-ssa -caml-apply-inline-fast-path`, the SSA validator aborts with `CFG comparison MISMATCH`.
+- [oxcaml/oxcaml#7952](https://github.com/oxcaml/oxcaml/issues/7952) (fixed): with `-flambda2-reaper`, a function returns before printing, after an unused `float` computed by a loop.
+- [oxcaml/oxcaml#7958](https://github.com/oxcaml/oxcaml/issues/7958) (known to the maintainers, not reported before): with `-flambda2-reaper`, `ocamlopt` uses memory without bound on a local function that builds an infinite list.
+- [oxcaml/oxcaml#7977](https://github.com/oxcaml/oxcaml/issues/7977): with `-flambda2-match-in-match`, a program segfaults calling a closure inlined from another module inside `try`, because the closure's statically allocated slot is filled only on another path.
+- [oxcaml/oxcaml#1655](https://github.com/oxcaml/oxcaml/issues/1655#issuecomment-6773715941) (regression): with `-flambda2-result-types-all-functions`, `ocamlopt -O3` crashes with `Variable my_depth not expected to be free in whole-compilation-unit term` on a recursive function that returns a closure.
