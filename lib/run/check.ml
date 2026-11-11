@@ -207,14 +207,17 @@ let check_source ~ox tc backends source versions =
          [%string "bug: %{bug}"]);
     assume tc false
   in
+  let save_report kind count =
+    save
+      kind
+      count
+      (String.map (fun c -> if c = '*' then '#' else c) (report backends results))
+  in
   (* A program a compiler rejects without crashing is a generator bug. It is
      saved and skipped, so a run goes on. *)
   let reject () =
     incr rejected;
-    save
-      "rejected"
-      !rejected
-      (String.map (fun c -> if c = '*' then '#' else c) (report backends results));
+    save_report "rejected" !rejected;
     assume tc false
   in
   let crashed msg =
@@ -227,11 +230,13 @@ let check_source ~ox tc backends source versions =
       ; show_exit Out_of_memory
       ]
   in
-  (* A compile still running at the time limit, when no other backend compiled
-     quickly, means a big program on a loaded machine. *)
+  (* A compile that runs out of time or memory, when no other backend compiled
+     quickly, is usually a big program on a loaded machine, but it can be a
+     compiler blowup, so the program is saved. *)
   let timed_out msg = String.starts_with ~prefix:(show_exit Timeout ^ "\n") msg in
   let skip_timeout () =
     incr timeouts;
+    if List.exists (compile_error timed_out) results then save_report "slow" !timeouts;
     assume tc false
   in
   (* Runs [backends] again on their versions of the program, edited. *)

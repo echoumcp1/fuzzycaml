@@ -24,7 +24,7 @@ Environment variables:
 - `FUZZYCAML_DATABASE=dir`: save failures in Hegel's database at `dir`, so a later run replays them first.
 - `FUZZYCAML_REPLAY=blob`: replay a failure blob (printed after a failure as `rerun with`) and report it as is, without shrinking; fails if it no longer reproduces.
 - `FUZZYCAML_FEATURES=a,b`: enable these features in every program (see `all_features` in `lib/generator/config.ml`).
-- `FUZZYCAML_SAVE=dir`: write programs that hit a known bug to `dir/known<pid>-<n>.ml`, and rejected ones to `dir/rejected<pid>-<n>.ml`.
+- `FUZZYCAML_SAVE=dir`: write programs that hit a known bug to `dir/known<pid>-<n>.ml`, rejected ones to `dir/rejected<pid>-<n>.ml`, and ones whose compile timed out to `dir/slow<pid>-<n>.ml`.
 - `FUZZYCAML_FIXED_OCLASSIC=<ocamlopt>`: a compiler with the flambda `-Oclassic` constant field fix (see `lib/run/known.ml`).
 
 ## Long runs
@@ -42,7 +42,7 @@ Output in `<dir>`:
 ```
 w<w>-<i>.log   log of worker w's i-th fuzzer; a failure ends with the shrunk program
 db/w<w>-<i>/   its Hegel database, which keeps the failure even if the log is cut short
-known/         programs that hit known bugs or were rejected
+known/         programs that hit known bugs, were rejected or compiled too slowly
 fuzz.exe       the binary the workers run
 stop           create this file to stop the run
 ```
