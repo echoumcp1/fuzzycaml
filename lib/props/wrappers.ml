@@ -233,13 +233,16 @@ let rec layer ctx env ty gen x =
          [ (fun () -> [%string "(Lazy.force (lazy %{x}))"])
          ; (fun () ->
              let module_ = fresh ctx "M" in
+             (* The annotation fixes a type still being inferred, such as a weak
+                type variable, before it meets [a], where the branch's equation
+                would make it ambiguous. *)
              [%string
                "(let module %{module_} = struct type _ Effect.t += Ask : %{ty_name} \
                 Effect.t end in Effect.Deep.match_with (fun () -> Effect.perform \
                 %{module_}.Ask) () { Effect.Deep.retc = (fun %{var} -> %{var}); exnc = \
                 raise; effc = (fun (type a) (e : a Effect.t) -> match e with \
                 %{module_}.Ask -> Some (fun (k : (a, _) Effect.Deep.continuation) -> \
-                Effect.Deep.continue k %{x}) | _ -> None) })"])
+                Effect.Deep.continue k (%{x} : %{ty_name})) | _ -> None) })"])
          ]
      (* Arrays of unboxed products are restricted. *)
      @ gate
