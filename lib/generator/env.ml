@@ -88,3 +88,12 @@ type gen =
       -> shape
       -> ty * string * bool
   }
+
+(* Since generated code only mutates values it creates, a record that a form
+   writes to is a new one. *)
+let fresh_record ctx env gen decl =
+  match ctx.decls.(decl) with
+  | Record fields ->
+    [%string "({ %{field_values (gen.expr env) (field_types fields)} } : t%{decl#Int})"]
+  | URecord _ | Variant _ -> invalid_arg "fresh_record"
+;;

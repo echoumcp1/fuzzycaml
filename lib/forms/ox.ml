@@ -97,10 +97,12 @@ type path =
   }
 
 (* Block indices do not support records stored as float arrays, nor float
-   arrays. *)
-let float_record fields =
+   arrays. An unboxed record of one float is stored as the float. *)
+let float_like ctx t = leaves ctx t = [ Float ]
+
+let float_record ctx fields =
   List.for_all
-    (fun (field : record_field) -> field.ty = Float || field.ty = unboxed_float)
+    (fun (field : record_field) -> float_like ctx field.ty || field.ty = unboxed_float)
     fields
 ;;
 
@@ -108,7 +110,7 @@ let paths ctx =
   List.concat_map
     (fun (decl, decl_def) ->
        match decl_def with
-       | Record fields when not (float_record fields) ->
+       | Record fields when not (float_record ctx fields) ->
          List.concat_map
            (fun (field : record_field) ->
               let direct =
@@ -135,7 +137,8 @@ let paths ctx =
     (indexed_decls ctx)
 ;;
 
-(* Nor arrays of products with a value after a non-value. *)
+(* Block indices into arrays of products do not yet support a value after a
+   non-value. *)
 let rec value_after_non_value = function
   | [] -> false
   | t :: rest ->
@@ -143,8 +146,23 @@ let rec value_after_non_value = function
     || value_after_non_value rest
 ;;
 
+let indexable_elem ctx ty =
+  (not (float_like ctx ty))
+  && (not (value_after_non_value (leaves ctx ty)))
+  && array_elem ctx ty
+;;
+
 let index path = "(." ^ String.concat ".#" path.fields ^ ")"
 let access path = "." ^ String.concat "." path.fields
+
+(* Erased, an unboxed record is a boxed one with immutable fields, so a write to
+   one of its fields replaces it. *)
+let erased_write record path value =
+  match path.fields with
+  | [ field; inner ] ->
+    [%string "%{record}.%{field} <- { %{record}.%{field} with %{inner} = %{value} }"]
+  | _ -> [%string "%{record}%{access path} <- %{value}"]
+;;
 
 (* Reads and writes through block indices, which erased are field and element
    accesses. *)
@@ -177,28 +195,26 @@ let indices ctx env ty gen =
            Some
              (fun () ->
                let record = fresh ctx "r" in
-               let record_expr = expr env (Named path.decl) in
-               let value = expr env ty in
-               let erased_write =
-                 match path.fields with
-                 | [ field; inner ] ->
-                   [%string
-                     "%{record}.%{field} <- { %{record}.%{field} with %{inner} = \
-                      %{value} }"]
-                 | _ -> [%string "%{record}%{access path} <- %{value}"]
+               let value = fresh ctx "v" in
+               let record_expr = fresh_record ctx env gen path.decl in
+               let value_expr = expr env ty in
+               let write =
+                 ox_syntax
+                   [%string "Stdlib_stable.Idx_mut.set %{record} %{index path} %{value}"]
+                   (erased_write record path value)
                in
-               ox_syntax
-                 [%string
-                   "(let %{record} = %{record_expr} in Stdlib_stable.Idx_mut.set \
-                    %{record} %{index path} %{value}; Stdlib_stable.Idx_mut.get \
-                    %{record} %{index path})"]
-                 [%string
-                   "(let %{record} = %{record_expr} in %{erased_write}; \
-                    %{record}%{access path})"]))
+               let read =
+                 ox_syntax
+                   [%string "Stdlib_stable.Idx_mut.get %{record} %{index path}"]
+                   [%string "%{record}%{access path}"]
+               in
+               [%string
+                 "(let %{record} = %{record_expr} in let %{value} : %{ty#Ty} = \
+                  %{value_expr} in %{write}; %{read})"]))
       (paths ctx)
   in
   let elements =
-    if ty = Float || value_after_non_value (leaves ctx ty) || not (array_elem ctx ty)
+    if not (indexable_elem ctx ty)
     then []
     else
       [ (fun () ->
@@ -221,19 +237,22 @@ let indices ctx env ty gen =
    update it. Erased, it is a field or element access. *)
 let addresses ctx env ty gen =
   let expr = gen.expr in
-  let collect () = pick ctx [ ""; "Gc.minor (); "; "Gc.compact (); " ] in
-  (* Reads the address, maybe after writing a new value through it. *)
-  let use ~is_mutable ~address ~erased_write ~erased_read =
+  let through ~is_mutable ~write ~address ~erased_write ~erased_read =
     let pointer = fresh ctx "p" in
     let x = fresh ctx "x" in
-    let collection = collect () in
-    let write = is_mutable && flip ctx in
-    let value = if write then expr env ty else "" in
+    let value = fresh ctx "v" in
+    let collection = pick ctx [ ""; "Gc.minor (); "; "Gc.compact (); " ] in
+    let value_expr = if write then expr env ty else "" in
     let pattern = if is_mutable then "addr_" else "addr_imm_" in
+    let bind_value = [%string "let %{value} : %{ty#Ty} = %{value_expr} in "] in
     let ox_write =
-      if write then [%string "Stdlib_stable.Addr.set %{pointer} %{value}; "] else ""
+      if write
+      then [%string "%{bind_value}Stdlib_stable.Addr.set %{pointer} %{value}; "]
+      else ""
     in
-    let erased_write = if write then erased_write value ^ "; " else "" in
+    let erased_write =
+      if write then [%string "%{bind_value}%{erased_write value}; "] else ""
+    in
     ox_syntax
       [%string
         "(let %{pointer} = %{address} in %{collection}%{ox_write}match %{pointer} with \
@@ -249,39 +268,45 @@ let addresses ctx env ty gen =
            Some
              (fun () ->
                let record = fresh ctx "r" in
-               let record_expr = expr env (Named path.decl) in
-               let module_ = if path.is_mutable then "Addr" else "Addr_imm" in
-               let erased_write value =
-                 match path.fields with
-                 | [ field; inner ] ->
-                   [%string
-                     "%{record}.%{field} <- { %{record}.%{field} with %{inner} = \
-                      %{value} }"]
-                 | _ -> [%string "%{record}%{access path} <- %{value}"]
+               let write = path.is_mutable && flip ctx in
+               let record_expr =
+                 if write
+                 then fresh_record ctx env gen path.decl
+                 else expr env (Named path.decl)
                in
+               let module_ = if path.is_mutable then "Addr" else "Addr_imm" in
                let body =
-                 use
+                 through
                    ~is_mutable:path.is_mutable
+                   ~write
                    ~address:
                      [%string "Stdlib_stable.%{module_}.of_idx %{record} %{index path}"]
-                   ~erased_write
+                   ~erased_write:(erased_write record path)
                    ~erased_read:[%string "%{record}%{access path}"]
                in
                [%string "(let %{record} = %{record_expr} in %{body})"]))
       (paths ctx)
   in
   let elements =
-    if ty = Float || value_after_non_value (leaves ctx ty) || not (array_elem ctx ty)
+    if not (indexable_elem ctx ty)
     then []
     else
       [ (fun () ->
           let array = fresh ctx "a" in
-          let array_expr = expr env (Arr ty) in
           let position = fresh ctx "i" in
+          let write = flip ctx in
+          let array_expr =
+            if write
+            then
+              [%string
+                "(array_make (1 + (%{expr env Int} land 7)) (%{expr env ty} : %{ty#Ty}))"]
+            else expr env (Arr ty)
+          in
           let position_expr = expr env Int in
           let body =
-            use
+            through
               ~is_mutable:true
+              ~write
               ~address:
                 [%string
                   "Stdlib_stable.Addr.of_idx %{array} \
