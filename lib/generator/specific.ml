@@ -330,12 +330,13 @@ let array_forms ctx env ty gen elem_ty =
            in
            let cell_expr = expr loop_env inner_ty in
            let init_expr = expr (closure env) inner_ty in
+           let row_length = [%string "(1 + (%{expr (closure env) Int} land 7))"] in
            [%string
-             "(let %{array_var} = Array.init %{length ()} (fun _ -> array_make %{length \
-              ()} %{init_expr}) in for %{loop_var} = 0 to array_length %{array_var} - 1 \
-              do let %{row} = array_get %{array_var} %{loop_var} in for %{inner_var} = 0 \
-              to array_length %{row} - 1 do array_set %{row} %{inner_var} %{cell_expr} \
-              done done; %{array_var})"])
+             "(let %{array_var} = Array.init %{length ()} (fun _ -> array_make \
+              %{row_length} %{init_expr}) in for %{loop_var} = 0 to array_length \
+              %{array_var} - 1 do let %{row} = array_get %{array_var} %{loop_var} in for \
+              %{inner_var} = 0 to array_length %{row} - 1 do array_set %{row} \
+              %{inner_var} %{cell_expr} done done; %{array_var})"])
        ]
      | _ -> [])
   (* The compiler picks how to store an array from its element type, so these
