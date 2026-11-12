@@ -108,18 +108,7 @@ let declare_types ctx items ~ox =
   let urecords = ox && on "urecords" in
   ignore
   @@ repeat ctx 0 4 (fun _ ->
-    let decl = gen_decl ctx in
-    let index = declare ctx items decl in
-    (match decl with
-     | Record fields when urecords && flip ctx ->
-       let unboxed =
-         declare
-           ctx
-           items
-           (URecord (List.map (fun field -> "u" ^ field.name, field.ty) fields))
-       in
-       unboxed_twins := (index, unboxed) :: !unboxed_twins
-     | _ -> ());
+    (* Declared first, so the record below may hold it. *)
     if urecords && flip ~p:0.3 ctx
     then
       ignore
@@ -131,7 +120,19 @@ let declare_types ctx items ~ox =
                  ( fresh ctx "uf"
                  , match decode ctx { all_types with depth = 1 } with
                    | Or_null _ -> Int
-                   | field_ty -> field_ty ))))))
+                   | field_ty -> field_ty )))));
+    let decl = gen_decl ctx in
+    let index = declare ctx items decl in
+    match decl with
+    | Record fields when urecords && flip ctx ->
+      let unboxed =
+        declare
+          ctx
+          items
+          (URecord (List.map (fun field -> "u" ^ field.name, field.ty) fields))
+      in
+      unboxed_twins := (index, unboxed) :: !unboxed_twins
+    | _ -> ())
 ;;
 
 (* Callbacks the runtime runs at allocations and major cycles, including in the
