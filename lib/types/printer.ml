@@ -64,7 +64,13 @@ let declaration ?parent i decl =
     let field_decl (field, field_ty) = [%string "%{field} : %{field_ty#Ty}"] in
     let decls = String.concat "; " (List.map field_decl fields) in
     let hash = Config.ox_syntax "#" "" in
+    let show (field, field_ty) =
+      [%string {|"%{field} = " ^ %{printer field_ty} v.%{hash}%{field}|}]
+    in
+    let shows = String.concat {| ^ "; " ^ |} (List.map show fields) in
     [%string "type t%{i#Int} = %{hash}{ %{decls} }\n"]
+    ^ [%string {|let show_t%{i#Int} (v : t%{i#Int}) = "#{" ^ %{shows} ^ "}"|}]
+    ^ "\n"
   | Variant constrs ->
     let constr (c, args) =
       match args with

@@ -9,6 +9,11 @@ let gen_decl ctx =
   then (
     let all_float = flip ~p:0.3 ctx in
     let float_ty = if !ox_mode && flip ctx then unboxed_float else Float in
+    let unboxed_records =
+      List.filter
+        (fun i -> !unboxed_record_decls.(i))
+        (List.init (Array.length ctx.decls) Fun.id)
+    in
     let unboxed () =
       if on "numbers" then Unboxed (pick ctx unboxed_numbers) else unboxed_float
     in
@@ -18,6 +23,8 @@ let gen_decl ctx =
          let field_ty =
            if all_float
            then float_ty
+           else if unboxed_records <> [] && flip ~p:0.3 ctx
+           then Named (pick ctx unboxed_records)
            else if !ox_mode && flip ~p:0.25 ctx
            then unboxed ()
            else first_order_type ctx
