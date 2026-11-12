@@ -71,6 +71,7 @@ let all_features =
   ; "comprehensions"
   ; "simd"
   ; "indices"
+  ; "addresses"
   ]
 ;;
 

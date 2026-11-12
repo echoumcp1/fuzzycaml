@@ -217,10 +217,92 @@ let indices ctx env ty gen =
   reads @ writes @ elements
 ;;
 
+(* An address points into a block, so a collection that moves the block must
+   update it. Erased, it is a field or element access. *)
+let addresses ctx env ty gen =
+  let expr = gen.expr in
+  let collect () = pick ctx [ ""; "Gc.minor (); "; "Gc.compact (); " ] in
+  (* Reads the address, maybe after writing a new value through it. *)
+  let use ~is_mutable ~address ~erased_write ~erased_read =
+    let pointer = fresh ctx "p" in
+    let x = fresh ctx "x" in
+    let collection = collect () in
+    let write = is_mutable && flip ctx in
+    let value = if write then expr env ty else "" in
+    let pattern = if is_mutable then "addr_" else "addr_imm_" in
+    let ox_write =
+      if write then [%string "Stdlib_stable.Addr.set %{pointer} %{value}; "] else ""
+    in
+    let erased_write = if write then erased_write value ^ "; " else "" in
+    ox_syntax
+      [%string
+        "(let %{pointer} = %{address} in %{collection}%{ox_write}match %{pointer} with \
+         %{pattern} (%{x} : %{ty#Ty}) -> %{x})"]
+      [%string "(%{collection}%{erased_write}%{erased_read})"]
+  in
+  let fields =
+    List.filter_map
+      (fun path ->
+         if path.leaf_ty <> ty
+         then None
+         else
+           Some
+             (fun () ->
+               let record = fresh ctx "r" in
+               let record_expr = expr env (Named path.decl) in
+               let module_ = if path.is_mutable then "Addr" else "Addr_imm" in
+               let erased_write value =
+                 match path.fields with
+                 | [ field; inner ] ->
+                   [%string
+                     "%{record}.%{field} <- { %{record}.%{field} with %{inner} = \
+                      %{value} }"]
+                 | _ -> [%string "%{record}%{access path} <- %{value}"]
+               in
+               let body =
+                 use
+                   ~is_mutable:path.is_mutable
+                   ~address:
+                     [%string "Stdlib_stable.%{module_}.of_idx %{record} %{index path}"]
+                   ~erased_write
+                   ~erased_read:[%string "%{record}%{access path}"]
+               in
+               [%string "(let %{record} = %{record_expr} in %{body})"]))
+      (paths ctx)
+  in
+  let elements =
+    if ty = Float || value_after_non_value (leaves ctx ty) || not (array_elem ctx ty)
+    then []
+    else
+      [ (fun () ->
+          let array = fresh ctx "a" in
+          let array_expr = expr env (Arr ty) in
+          let position = fresh ctx "i" in
+          let position_expr = expr env Int in
+          let body =
+            use
+              ~is_mutable:true
+              ~address:
+                [%string
+                  "Stdlib_stable.Addr.of_idx %{array} \
+                   (Stdlib_stable.Idx_mut.unsafe_create_into_array %{position})"]
+              ~erased_write:(fun value ->
+                [%string "array_set %{array} %{position} %{value}"])
+              ~erased_read:[%string "array_get %{array} %{position}"]
+          in
+          [%string
+            "(let %{array} = %{array_expr} in let %{position} = (%{position_expr} land \
+             max_int) mod array_length %{array} in %{body})"])
+      ]
+  in
+  fields @ elements
+;;
+
 let forms ctx env ty gen =
   if !ox_mode
   then
     boost (unboxed_and_mutable ctx env ty gen)
-    @ if on "indices" then indices ctx env ty gen else []
+    @ (if on "indices" then indices ctx env ty gen else [])
+    @ if on "addresses" then addresses ctx env ty gen else []
   else []
 ;;
