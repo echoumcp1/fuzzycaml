@@ -194,6 +194,15 @@ let elem_of t =
   go 0
 ;;
 
+let array_elem t =
+  on "arrays"
+  && elem_allowed 1 (elem_of t)
+  &&
+  match t with
+  | UTuple ts -> array_product ts
+  | _ -> true
+;;
+
 let draw_index ctx allowed last_index =
   let rec go () =
     let index = int_in ctx 0 last_index in

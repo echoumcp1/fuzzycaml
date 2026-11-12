@@ -129,6 +129,40 @@ let gc ctx env ty gen =
     "(%{lets allocations}%{gc}; %{gen.expr (bind_all env (types allocations)) ty})"]
 ;;
 
+(* A collection promotes a block, which then holds a younger value, so the store
+   must record it for the next collection to find. *)
+let barrier ctx env ty gen =
+  let expr = gen.expr in
+  let stored () = [%string "(%{expr env ty} : %{ty#Ty})"] in
+  let array () =
+    let container = fresh ctx "c" in
+    let index = fresh ctx "i" in
+    [%string
+      "(let %{container} = array_make (1 + (%{expr env Int} land 7)) %{stored ()} in \
+       Gc.minor (); let %{index} = (%{expr env Int} land max_int) mod array_length \
+       %{container} in array_set %{container} %{index} %{stored ()}; Gc.minor (); \
+       array_get %{container} %{index})"]
+  in
+  let field decl (field : record_field) () =
+    let container = fresh ctx "c" in
+    [%string
+      "(let %{container} = %{expr env (Named decl)} in Gc.minor (); \
+       %{container}.%{field.name} <- %{stored ()}; Gc.minor (); \
+       %{container}.%{field.name})"]
+  in
+  (if array_elem ty then [ array ] else [])
+  @ List.concat_map
+      (fun (decl, decl_def) ->
+         match decl_def with
+         | Record fields ->
+           List.filter_map
+             (fun (f : record_field) ->
+                if f.is_mutable && f.ty = ty then Some (field decl f) else None)
+             fields
+         | URecord _ | Variant _ -> [])
+      (indexed_decls ctx)
+;;
+
 (* An interrupt callback may raise in the middle of it, and then it runs again. A
    lazy from outside is left out: interrupted while forcing it, it would raise
    [Sys.Break] again when the retry forces it. *)
@@ -150,6 +184,7 @@ let forms ctx env ty gen =
   (if first_order ty then [ (fun () -> pressure ctx env ty gen) ] else [])
   @ (if value && on "manyargs" then [ (fun () -> many_args ctx env ty gen) ] else [])
   @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty gen) ] else [])
+  @ (if on "gc" then barrier ctx env ty gen else [])
   @ boost
       (if value && on "interrupts" then [ (fun () -> interrupted env ty gen) ] else [])
 ;;
