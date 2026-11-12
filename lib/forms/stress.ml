@@ -166,6 +166,38 @@ let barrier ctx env ty gen =
       (indexed_decls ctx)
 ;;
 
+(* The runtime copies, measures, weakly holds or finalises the value, walking it
+   by its layout. *)
+let walked ctx env ty gen =
+  let x = fresh ctx "x" in
+  let walk =
+    choose
+      ctx
+      [ (fun () ->
+          [%string
+            "(if Obj.is_block (Obj.repr %{x}) then (Obj.obj (Obj.dup (Obj.repr %{x})) : \
+             %{ty#Ty}) else %{x})"])
+      ; (fun () -> [%string "(ignore (Obj.reachable_words (Obj.repr %{x})); %{x})"])
+      ; (fun () ->
+          let get = pick ctx [ "Weak.get"; "Weak.get_copy" ] in
+          [%string
+            "(let w = Weak.create 1 in Weak.set w 0 (Some %{x}); Gc.full_major (); match \
+             %{get} w 0 with Some y -> y | None -> %{x})"])
+      ; (fun () ->
+          [%string
+            "(let k = ref 0 in let e = Ephemeron.K1.make k %{x} in Gc.full_major (); \
+             match Ephemeron.K1.query e k with Some y -> y | None -> %{x})"])
+        (* Some values cannot be finalised, and when the finaliser runs depends on
+           the backend, so it does nothing visible. *)
+      ; (fun () ->
+          [%string
+            "((try Gc.finalise (fun v -> ignore (Sys.opaque_identity v)) %{x} with \
+             Invalid_argument _ -> ()); %{x})"])
+      ]
+  in
+  [%string "(let %{x} : %{ty#Ty} = %{gen.expr env ty} in %{walk})"]
+;;
+
 (* An interrupt callback may raise in the middle of it, and then it runs again. A
    lazy from outside is left out: interrupted while forcing it, it would raise
    [Sys.Break] again when the retry forces it. *)
@@ -188,6 +220,9 @@ let forms ctx env ty gen =
   @ (if value && on "manyargs" then [ (fun () -> many_args ctx env ty gen) ] else [])
   @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty gen) ] else [])
   @ (if on "gc" then barrier ctx env ty gen else [])
+  @ (match ty with
+     | Arrow _ -> []
+     | _ -> if value && on "gc" then [ (fun () -> walked ctx env ty gen) ] else [])
   @ boost
       (if value && on "interrupts" then [ (fun () -> interrupted env ty gen) ] else [])
 ;;
