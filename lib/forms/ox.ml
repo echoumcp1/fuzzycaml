@@ -87,6 +87,140 @@ let unboxed_and_mutable ctx env ty gen =
   else []
 ;;
 
+(* A field of a declared record, or a field of an unboxed record that one holds,
+   for a block index to point to. *)
+type path =
+  { decl : int
+  ; fields : string list
+  ; leaf_ty : ty
+  ; is_mutable : bool
+  }
+
+(* Block indices do not support records stored as float arrays, nor float
+   arrays. *)
+let float_record fields =
+  List.for_all
+    (fun (field : record_field) -> field.ty = Float || field.ty = unboxed_float)
+    fields
+;;
+
+let paths ctx =
+  List.concat_map
+    (fun (decl, decl_def) ->
+       match decl_def with
+       | Record fields when not (float_record fields) ->
+         List.concat_map
+           (fun (field : record_field) ->
+              let direct =
+                { decl
+                ; fields = [ field.name ]
+                ; leaf_ty = field.ty
+                ; is_mutable = field.is_mutable
+                }
+              in
+              direct
+              ::
+              (match field.ty with
+               | Named inner when !unboxed_record_decls.(inner) ->
+                 (match ctx.decls.(inner) with
+                  | URecord inner_fields ->
+                    List.map
+                      (fun (name, leaf_ty) ->
+                         { direct with fields = [ field.name; name ]; leaf_ty })
+                      inner_fields
+                  | Record _ | Variant _ -> [])
+               | _ -> []))
+           fields
+       | Record _ | URecord _ | Variant _ -> [])
+    (indexed_decls ctx)
+;;
+
+(* Nor arrays of products with a value after a non-value. *)
+let rec value_after_non_value = function
+  | [] -> false
+  | t :: rest ->
+    (restricted t && List.exists (fun t -> not (restricted t)) rest)
+    || value_after_non_value rest
+;;
+
+let index path = "(." ^ String.concat ".#" path.fields ^ ")"
+let access path = "." ^ String.concat "." path.fields
+
+(* Reads and writes through block indices, which erased are field and element
+   accesses. *)
+let indices ctx env ty gen =
+  let expr = gen.expr in
+  let reads =
+    List.filter_map
+      (fun path ->
+         if path.leaf_ty <> ty
+         then None
+         else
+           Some
+             (fun () ->
+               let record = fresh ctx "r" in
+               let record_expr = expr env (Named path.decl) in
+               let module_ = if path.is_mutable then "Idx_mut" else "Idx_imm" in
+               ox_syntax
+                 [%string
+                   "(let %{record} = %{record_expr} in Stdlib_stable.%{module_}.get \
+                    %{record} %{index path})"]
+                 [%string "(%{record_expr})%{access path}"]))
+      (paths ctx)
+  in
+  let writes =
+    List.filter_map
+      (fun path ->
+         if path.leaf_ty <> ty || not path.is_mutable
+         then None
+         else
+           Some
+             (fun () ->
+               let record = fresh ctx "r" in
+               let record_expr = expr env (Named path.decl) in
+               let value = expr env ty in
+               let erased_write =
+                 match path.fields with
+                 | [ field; inner ] ->
+                   [%string
+                     "%{record}.%{field} <- { %{record}.%{field} with %{inner} = \
+                      %{value} }"]
+                 | _ -> [%string "%{record}%{access path} <- %{value}"]
+               in
+               ox_syntax
+                 [%string
+                   "(let %{record} = %{record_expr} in Stdlib_stable.Idx_mut.set \
+                    %{record} %{index path} %{value}; Stdlib_stable.Idx_mut.get \
+                    %{record} %{index path})"]
+                 [%string
+                   "(let %{record} = %{record_expr} in %{erased_write}; \
+                    %{record}%{access path})"]))
+      (paths ctx)
+  in
+  let elements =
+    if ty = Float || value_after_non_value (leaves ctx ty) || not (array_elem ctx ty)
+    then []
+    else
+      [ (fun () ->
+          let array = fresh ctx "a" in
+          let array_expr = expr env (Arr ty) in
+          let position =
+            [%string "((%{expr env Int} land max_int) mod array_length %{array})"]
+          in
+          ox_syntax
+            [%string
+              "(let %{array} = %{array_expr} in Stdlib_stable.Idx_mut.get %{array} \
+               (Stdlib_stable.Idx_mut.unsafe_create_into_array %{position}))"]
+            [%string "(let %{array} = %{array_expr} in array_get %{array} %{position})"])
+      ]
+  in
+  reads @ writes @ elements
+;;
+
 let forms ctx env ty gen =
-  if !ox_mode then boost (unboxed_and_mutable ctx env ty gen) else []
+  if !ox_mode
+  then
+    boost (unboxed_and_mutable ctx env ty gen)
+    @ if on "indices" then indices ctx env ty gen else []
+  else []
 ;;
