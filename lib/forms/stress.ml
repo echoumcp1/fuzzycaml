@@ -149,7 +149,7 @@ let barrier ctx env ty gen =
   let field decl (field : record_field) () =
     let container = fresh ctx "c" in
     [%string
-      "(let %{container} = %{expr env (Named decl)} in Gc.minor (); \
+      "(let %{container} = %{fresh_record ctx env gen decl} in Gc.minor (); \
        %{container}.%{field.name} <- %{stored ()}; Gc.minor (); \
        %{container}.%{field.name})"]
   in
@@ -220,9 +220,10 @@ let forms ctx env ty gen =
   @ (if value && on "manyargs" then [ (fun () -> many_args ctx env ty gen) ] else [])
   @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty gen) ] else [])
   @ (if on "gc" then barrier ctx env ty gen else [])
-  @ (match ty with
-     | Arrow _ -> []
-     | _ -> if value && on "gc" then [ (fun () -> walked ctx env ty gen) ] else [])
   @ boost
       (if value && on "interrupts" then [ (fun () -> interrupted env ty gen) ] else [])
+  @
+  match ty with
+  | Arrow _ -> []
+  | _ -> if value && on "gc" then [ (fun () -> walked ctx env ty gen) ] else []
 ;;
