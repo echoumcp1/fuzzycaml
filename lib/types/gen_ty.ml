@@ -135,12 +135,13 @@ type elem =
   | Elem_float_u
   | Elem_arr
   | Elem_product
+  | Elem_record
 
 let elems =
   Array.of_list
     ([ Elem Int; Elem Float; Elem Int64; Elem Float; Elem_any; Elem_arr; Elem_float_u ]
      @ List.map (fun t -> Elem t) newer_numbers
-     @ [ Elem_product ])
+     @ [ Elem_product; Elem_record ])
 ;;
 
 (* An unboxed product in an array holds only values the GC scans or only values it
@@ -168,7 +169,30 @@ let array_product ts =
 
 let product_parts ts = if List.for_all (fun t -> List.mem t (scanned ())) ts then 0 else 1
 
-let elem_allowed depth i =
+let rec leaves ctx t =
+  match t with
+  | Named i when !unboxed_record_decls.(i) ->
+    (match ctx.decls.(i) with
+     | URecord fields -> List.concat_map (fun (_, t) -> leaves ctx t) fields
+     | Record _ | Variant _ -> [ t ])
+  | UTuple ts -> List.concat_map (leaves ctx) ts
+  | t -> [ t ]
+;;
+
+(* Unboxed records an array may hold: like a product, one holds only values or
+   only what the GC ignores. *)
+let array_records ctx =
+  List.filter
+    (fun i ->
+       !unboxed_record_decls.(i)
+       &&
+       let ts = leaves ctx (Named i) in
+       List.for_all (fun t -> not (restricted t)) ts
+       || List.for_all (fun t -> List.mem t (ignored ())) ts)
+    (List.init (Array.length ctx.decls) Fun.id)
+;;
+
+let elem_allowed ctx depth i =
   match elems.(i) with
   | Elem (Int | Int64) -> true
   | Elem Float -> i < 3 || not !ox_mode
@@ -176,30 +200,33 @@ let elem_allowed depth i =
   | Elem_arr -> depth > 0
   | Elem_float_u -> !ox_mode && not (on "numbers")
   | Elem_product -> !ox_mode && on "utuples"
+  | Elem_record -> !ox_mode && array_records ctx <> []
   | Elem _ -> !ox_mode && on "numbers"
 ;;
 
-let elem_of t =
+let elem_of ctx t =
   let rec go i =
     if i >= Array.length elems
     then 4 (* Elem_any *)
     else (
       match elems.(i), t with
-      | Elem s, _ when s = t && elem_allowed 1 i -> i
-      | Elem_float_u, Unboxed UFloat when elem_allowed 1 i -> i
+      | Elem s, _ when s = t && elem_allowed ctx 1 i -> i
+      | Elem_float_u, Unboxed UFloat when elem_allowed ctx 1 i -> i
       | Elem_arr, Arr _ -> i
       | Elem_product, UTuple _ -> i
+      | Elem_record, Named j when !unboxed_record_decls.(j) -> i
       | _ -> go (i + 1))
   in
   go 0
 ;;
 
-let array_elem t =
+let array_elem ctx t =
   on "arrays"
-  && elem_allowed 1 (elem_of t)
+  && elem_allowed ctx 1 (elem_of ctx t)
   &&
   match t with
   | UTuple ts -> array_product ts
+  | Named i -> List.mem i (array_records ctx)
   | _ -> true
 ;;
 
@@ -254,7 +281,7 @@ let rec decode ctx params =
   | Or_null_ -> Or_null (decode ctx inner)
 
 and decode_elem ctx depth =
-  let allowed_slot = elem_allowed depth in
+  let allowed_slot = elem_allowed ctx depth in
   match elems.(draw_index ctx allowed_slot (last allowed_slot (Array.length elems))) with
   | Elem t -> t
   | Elem_any -> decode ctx { value_types with depth }
@@ -265,6 +292,9 @@ and decode_elem ctx depth =
     UTuple
       (List.init (int_in ctx 2 3) (fun _ ->
          List.nth components (int_in ctx 0 (List.length components - 1))))
+  | Elem_record ->
+    let records = array_records ctx in
+    Named (List.nth records (int_in ctx 0 (List.length records - 1)))
 ;;
 
 let draw_fixed ctx i = ignore (int_in ctx i i)
@@ -283,7 +313,7 @@ let rec encode ctx ty =
   | Int | Bool | Float | Char | Int64 | Str | Num _ | Unboxed _ | Named _ -> ()
 
 and encode_elem ctx elem_ty =
-  let slot = elem_of elem_ty in
+  let slot = elem_of ctx elem_ty in
   draw_fixed ctx slot;
   match elems.(slot), elem_ty with
   | Elem_any, _ -> encode ctx elem_ty
@@ -297,6 +327,8 @@ and encode_elem ctx elem_ty =
       (fun component ->
          draw_fixed ctx (Option.get (List.find_index (( = ) component) components)))
       component_tys
+  | Elem_record, Named i ->
+    draw_fixed ctx (Option.get (List.find_index (( = ) i) (array_records ctx)))
   | _ -> ()
 ;;
 

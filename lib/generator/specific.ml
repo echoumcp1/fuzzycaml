@@ -341,9 +341,9 @@ let array_forms ctx env ty gen elem_ty =
   (* The compiler picks how to store an array from its element type, so these
        hide that type behind a GADT, a polymorphic function or a call. *)
   @
-  match elem_ty with
-  | Unboxed _ | UTuple _ -> []
-  | _ ->
+  if restricted elem_ty
+  then []
+  else (
     let witness () =
       pick
         ctx
@@ -362,7 +362,7 @@ let array_forms ctx env ty gen elem_ty =
         [%string
           "(let %{make} (type a) (x : a) (y : a) : a array = [| x; y; x |] in %{make} \
            %{expr env elem_ty} %{expr env elem_ty})"])
-    ]
+    ])
 ;;
 
 let list_forms ctx env ty gen elem_ty =
