@@ -70,6 +70,7 @@ let all_features =
   ; "bigarrays"
   ; "comprehensions"
   ; "simd"
+  ; "indices"
   ]
 ;;
 
