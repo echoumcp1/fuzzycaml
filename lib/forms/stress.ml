@@ -137,11 +137,14 @@ let barrier ctx env ty gen =
   let array () =
     let container = fresh ctx "c" in
     let index = fresh ctx "i" in
+    (* An array of more than 256 words, which even 8-bit elements reach at 2049,
+       is allocated in the major heap directly. *)
+    let base = pick ctx [ 1; 2049 ] in
     [%string
-      "(let %{container} = array_make (1 + (%{expr env Int} land 7)) %{stored ()} in \
-       Gc.minor (); let %{index} = (%{expr env Int} land max_int) mod array_length \
-       %{container} in array_set %{container} %{index} %{stored ()}; Gc.minor (); \
-       array_get %{container} %{index})"]
+      "(let %{container} = array_make (%{base#Int} + (%{expr env Int} land 7)) %{stored \
+       ()} in Gc.minor (); let %{index} = (%{expr env Int} land max_int) mod \
+       array_length %{container} in array_set %{container} %{index} %{stored ()}; \
+       Gc.minor (); array_get %{container} %{index})"]
   in
   let field decl (field : record_field) () =
     let container = fresh ctx "c" in
