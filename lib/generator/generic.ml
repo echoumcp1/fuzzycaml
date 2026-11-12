@@ -329,6 +329,7 @@ let array_reads ctx env ty gen =
       match ty with
       | Arr _ -> true
       | UTuple component_tys -> on "arrays" && array_product component_tys
+      | Named _ -> array_elem ctx ty
       | _ -> false
     else not (restricted ty)
   in

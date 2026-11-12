@@ -153,7 +153,7 @@ let barrier ctx env ty gen =
        %{container}.%{field.name} <- %{stored ()}; Gc.minor (); \
        %{container}.%{field.name})"]
   in
-  (if array_elem ty then [ array ] else [])
+  (if array_elem ctx ty then [ array ] else [])
   @ List.concat_map
       (fun (decl, decl_def) ->
          match decl_def with
