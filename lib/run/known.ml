@@ -280,6 +280,24 @@ let known_bug ~rerun backends results source =
             | [] -> false
           then Some "list comprehension to max_int"
           else None)
+        (* -flambda2-match-in-match can make a call, inside a try, to a closure
+           inlined from another module segfault. *)
+      ; (fun () ->
+          let match_in_match = "-flambda2-match-in-match" in
+          if
+            List.for_all
+              (fun (b, result) ->
+                 agrees result
+                 || (List.mem match_in_match b.argv
+                     &&
+                     match result with
+                     | Ran (Signaled signal, _, _) -> signal = Sys.sigsegv
+                     | _ -> false))
+              (List.combine backends results)
+            && odd_agree (fun b ->
+              { b with argv = List.filter (( <> ) match_in_match) b.argv })
+          then Some "match-in-match segfault"
+          else None)
         (* Flambda's -Oclassic reads a constant field of a lifted block as the
            block itself. Matches only if the odd backends agree when compiled
            by FUZZYCAML_FIXED_OCLASSIC, an ocamlopt with the fix. *)
