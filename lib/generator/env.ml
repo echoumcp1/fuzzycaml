@@ -30,10 +30,15 @@ let lazy_body env = { (escape env) with in_try = env.in_try; escapes = env.escap
 
 (* Code that cannot raise, perform, tick, or use a local or a mutable, so that
    evaluating it anywhere does not change the output. Generated code only
-   mutates values it creates. *)
+   mutates values it creates. A lazy from outside is left out, since forcing it
+   can raise or tick, and earlier than the program would. *)
+let without_lazies vars =
+  List.filter (fun (var, _) -> not (String.starts_with ~prefix:"(Lazy.force " var)) vars
+;;
+
 let pure env =
-  { env with
-    locals = []
+  { vars = without_lazies env.vars
+  ; locals = []
   ; mutables = []
   ; in_try = false
   ; escapes = false

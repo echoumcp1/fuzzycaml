@@ -198,21 +198,10 @@ let walked ctx env ty gen =
   [%string "(let %{x} : %{ty#Ty} = %{gen.expr env ty} in %{walk})"]
 ;;
 
-(* An interrupt callback may raise in the middle of it, and then it runs again. A
-   lazy from outside is left out: interrupted while forcing it, it would raise
-   [Sys.Break] again when the retry forces it. *)
-let interrupted env ty gen =
-  let env = pure env in
-  let env =
-    { env with
-      vars =
-        List.filter
-          (fun (var, _) -> not (String.starts_with ~prefix:"(Lazy.force " var))
-          env.vars
-    }
-  in
-  [%string "(attempt (fun () -> %{gen.expr env ty}))"]
-;;
+(* An interrupt callback may raise in the middle of it, and then it runs again.
+   [pure] leaves out lazies from outside, which, interrupted while forced, would
+   raise [Sys.Break] again when the retry forces them. *)
+let interrupted env ty gen = [%string "(attempt (fun () -> %{gen.expr (pure env) ty}))"]
 
 let forms ctx env ty gen =
   let value = not (restricted ty) in

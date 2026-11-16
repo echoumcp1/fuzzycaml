@@ -364,7 +364,7 @@ let neutral ctx env ty gen s =
       (function
         | original, Arr elem_ty -> Some (original, elem_ty)
         | _ -> None)
-      env.vars
+      (without_lazies env.vars)
   in
   wrap
   @@ choose
