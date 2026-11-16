@@ -22,9 +22,16 @@ let () =
     | _ -> None)
 ;;
 
-let outcomes : (string, (exn * Printexc.raw_backtrace) option) Hashtbl.t =
-  Hashtbl.create 1024
-;;
+(* A failure is replayed from here, so the EMI version, which only a run
+   computes, is kept to be noted again. *)
+type failure =
+  { exn : exn
+  ; backtrace : Printexc.raw_backtrace
+  ; emi : string
+  }
+
+let outcomes : (string, failure option) Hashtbl.t = Hashtbl.create 1024
+let note_emi tc emi = note tc ("(* emi *)\n" ^ Markers.clean emi)
 
 (* After the first failure, only the reference and the first differing backend
    are run, to make shrinking faster. *)
@@ -157,7 +164,7 @@ let check_source ~ox tc backends source versions =
       let original = Markers.without_wrappers source in
       versions.emi
       <- Option.fold ~none:original ~some:(fun hits -> Emi.pruned hits original) hits;
-      note tc ("(* emi *)\n" ^ Markers.clean versions.emi));
+      note_emi tc versions.emi);
     let results = run_all ~source_for backends source in
     let rejected =
       List.find_map
@@ -338,7 +345,9 @@ let check ~ox ~effect_syntax backends tc =
   if Hashtbl.length outcomes > 100_000 then Hashtbl.reset outcomes;
   match Hashtbl.find_opt outcomes key with
   | Some None -> ()
-  | Some (Some (exn, backtrace)) -> Printexc.raise_with_backtrace exn backtrace
+  | Some (Some { exn; backtrace; emi }) ->
+    if emi <> "" then note_emi tc emi;
+    Printexc.raise_with_backtrace exn backtrace
   | None ->
     (match check_source ~ox tc backends source versions with
      | () -> Hashtbl.add outcomes key None
@@ -349,6 +358,6 @@ let check ~ox ~effect_syntax backends tc =
           | Property_failed _
           | Internal.Assume_rejected ) as exn) ->
        let backtrace = Printexc.get_raw_backtrace () in
-       Hashtbl.add outcomes key (Some (exn, backtrace));
+       Hashtbl.add outcomes key (Some { exn; backtrace; emi = versions.emi });
        Printexc.raise_with_backtrace exn backtrace)
 ;;
