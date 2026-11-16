@@ -251,6 +251,7 @@ let check_source ~ox tc backends source versions =
     run_all ~source_for:(fun b source -> edit (source_for b source)) backends source
   in
   Option.iter skip_known (memprof_perform ~rerun backends results source);
+  Option.iter skip_known (branch_relaxation ~rerun backends results);
   (* Versions differ in code, so one of them alone may hit a known crash. *)
   if !Config.props
   then
@@ -302,19 +303,8 @@ let check_source ~ox tc backends source versions =
       results
   then skip_timeout ();
   Option.iter skip_known (known_bug ~rerun backends results source);
-  (* Programs only raise Exit, so a crash or any other uncaught exception is a
-     failure even if all backends agree. *)
-  if
-    List.exists
-      (function
-        | Ran (Signaled _, _, _) -> true
-        | Ran (Exited 2, _, err) ->
-          (* The debug runtime prints a banner first. *)
-          not
-            (Text.contains err "Fatal error: exception Stdlib.Exit"
-             || Text.contains err "Exception: Stdlib.Exit.")
-        | _ -> false)
-      results
+  (* A crash is a failure even if all backends agree. *)
+  if List.exists crashed_running results
   then fail backends results (fun t -> Backend_crashed t) "backend crashed\n";
   if
     List.exists
