@@ -117,11 +117,10 @@ let many_args ctx env ty gen =
 ;;
 
 (* Fresh allocations live across a collection and are used afterward, so the GC
-   must find them wherever the backend keeps them. *)
+   must find them wherever the backend keeps them, and skip the unboxed values
+   among them. *)
 let gc ctx env ty gen =
-  let allocations =
-    bindings ctx gen env (int_in ctx 2 6) first_order_types (fun _ -> "g")
-  in
+  let allocations = bindings ctx gen env (int_in ctx 2 6) all_types (fun _ -> "g") in
   let gc =
     pick ctx [ "Gc.minor ()"; "Gc.minor ()"; "Gc.full_major ()"; "Gc.compact ()" ]
   in
@@ -166,36 +165,60 @@ let barrier ctx env ty gen =
       (indexed_decls ctx)
 ;;
 
-(* The runtime copies, measures, weakly holds or finalises the value, walking it
-   by its layout. *)
+(* The runtime copies, measures, weakly holds or finalises [x], walking it by its
+   layout. *)
+let walk ctx x ty =
+  choose
+    ctx
+    [ (fun () ->
+        [%string
+          "(if Obj.is_block (Obj.repr %{x}) then (Obj.obj (Obj.dup (Obj.repr %{x})) : \
+           %{ty#Ty}) else %{x})"])
+    ; (fun () -> [%string "(ignore (Obj.reachable_words (Obj.repr %{x})); %{x})"])
+    ; (fun () ->
+        let get = pick ctx [ "Weak.get"; "Weak.get_copy" ] in
+        [%string
+          "(let w = Weak.create 1 in Weak.set w 0 (Some %{x}); Gc.full_major (); match \
+           %{get} w 0 with Some y -> y | None -> %{x})"])
+    ; (fun () ->
+        [%string
+          "(let k = ref 0 in let e = Ephemeron.K1.make k %{x} in Gc.full_major (); match \
+           Ephemeron.K1.query e k with Some y -> y | None -> %{x})"])
+      (* Some values cannot be finalised, and when the finaliser runs depends on
+         the backend, so it does nothing visible. *)
+    ; (fun () ->
+        [%string
+          "((try Gc.finalise (fun v -> ignore (Sys.opaque_identity v)) %{x} with \
+           Invalid_argument _ -> ()); %{x})"])
+    ]
+;;
+
 let walked ctx env ty gen =
   let x = fresh ctx "x" in
-  let walk =
-    choose
-      ctx
-      [ (fun () ->
-          [%string
-            "(if Obj.is_block (Obj.repr %{x}) then (Obj.obj (Obj.dup (Obj.repr %{x})) : \
-             %{ty#Ty}) else %{x})"])
-      ; (fun () -> [%string "(ignore (Obj.reachable_words (Obj.repr %{x})); %{x})"])
-      ; (fun () ->
-          let get = pick ctx [ "Weak.get"; "Weak.get_copy" ] in
-          [%string
-            "(let w = Weak.create 1 in Weak.set w 0 (Some %{x}); Gc.full_major (); match \
-             %{get} w 0 with Some y -> y | None -> %{x})"])
-      ; (fun () ->
-          [%string
-            "(let k = ref 0 in let e = Ephemeron.K1.make k %{x} in Gc.full_major (); \
-             match Ephemeron.K1.query e k with Some y -> y | None -> %{x})"])
-        (* Some values cannot be finalised, and when the finaliser runs depends on
-           the backend, so it does nothing visible. *)
-      ; (fun () ->
-          [%string
-            "((try Gc.finalise (fun v -> ignore (Sys.opaque_identity v)) %{x} with \
-             Invalid_argument _ -> ()); %{x})"])
-      ]
-  in
-  [%string "(let %{x} : %{ty#Ty} = %{gen.expr env ty} in %{walk})"]
+  [%string "(let %{x} : %{ty#Ty} = %{gen.expr env ty} in %{walk ctx x ty})"]
+;;
+
+(* Records with an unboxed field, which the runtime scans differently from other
+   records. Few expressions have their type, so a fresh one is walked beside the
+   expression, which can then read it. *)
+let mixed_records ctx =
+  List.filter_map
+    (fun (decl, decl_def) ->
+       match decl_def with
+       | Record fields when List.exists (fun (f : record_field) -> restricted f.ty) fields
+         -> Some decl
+       | Record _ | URecord _ | Variant _ -> None)
+    (indexed_decls ctx)
+;;
+
+let walked_mixed ctx env ty gen decls =
+  let decl = pick ctx decls in
+  let x = fresh ctx "x" in
+  let record_ty = Named decl in
+  let walked = walk ctx x record_ty in
+  [%string
+    "(let %{x} : %{record_ty#Ty} = %{fresh_record ctx env gen decl} in let %{x} : \
+     %{record_ty#Ty} = %{walked} in %{gen.expr (bind env x record_ty) ty})"]
 ;;
 
 (* An interrupt callback may raise in the middle of it, and then it runs again.
@@ -209,6 +232,10 @@ let forms ctx env ty gen =
   @ (if value && on "manyargs" then [ (fun () -> many_args ctx env ty gen) ] else [])
   @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty gen) ] else [])
   @ (if on "gc" then barrier ctx env ty gen else [])
+  @ (let decls = mixed_records ctx in
+     if on "gc" && decls <> []
+     then [ (fun () -> walked_mixed ctx env ty gen decls) ]
+     else [])
   @ boost
       (if value && on "interrupts" then [ (fun () -> interrupted env ty gen) ] else [])
   @
