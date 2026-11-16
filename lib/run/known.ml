@@ -104,6 +104,56 @@ let on_trunk name =
   | _ -> false
 ;;
 
+(* Programs only raise Exit, so any other uncaught exception is a crash. *)
+let crashed_running = function
+  | Ran (Signaled _, _, _) -> true
+  | Ran (Exited 2, _, err) ->
+    (* The debug runtime prints a banner first. *)
+    not
+      (Text.contains err "Fatal error: exception Stdlib.Exit"
+       || Text.contains err "Exception: Stdlib.Exit.")
+  | _ -> false
+;;
+
+(* Branch relaxation expands a three-way branch on a comparison with 1 into
+   tests for 0, 1 and 2, so a larger value, such as a constructor tag above 2,
+   falls through. Only the lowered displacement makes branches in small programs
+   relaxed, so a crash that it alone causes is this bug. *)
+let branch_relaxation ~rerun backends results =
+  let displacement = "-dbranch-relaxation-max-displacement" in
+  let rec without_displacement = function
+    | flag :: _ :: rest when flag = displacement -> rest
+    | arg :: rest -> arg :: without_displacement rest
+    | [] -> []
+  in
+  let crashed, others =
+    List.partition
+      (fun (_, result) -> crashed_running result)
+      (List.combine backends results)
+  in
+  if
+    crashed <> []
+    && List.for_all (fun (b, _) -> List.mem displacement b.argv) crashed
+    &&
+    let rerun_results =
+      rerun
+        ~edit:Fun.id
+        (List.map (fun (b, _) -> { b with argv = without_displacement b.argv }) crashed)
+    in
+    match
+      List.find_opt
+        (function
+          | _, Ran _ -> true
+          | _, Compile_error _ -> false)
+        others
+    with
+    | Some (_, expected) ->
+      List.for_all (fun result -> observable result = observable expected) rerun_results
+    | None -> not (List.exists crashed_running rerun_results)
+  then Some "branch relaxation of a three-way branch"
+  else None
+;;
+
 let known_bug ~rerun backends results source =
   let reference =
     observable
