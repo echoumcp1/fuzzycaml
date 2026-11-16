@@ -30,8 +30,9 @@ let known_compile_crash msg =
     ]
 ;;
 
-(* The SSA validator reports a mismatch on correct code when caml_apply takes the
-   inline fast path. *)
+(* The SSA validator reports mismatches on correct code: with the caml_apply
+   inline fast path, and with block layout on a block's coldness in a
+   [@zero_alloc] function. *)
 let known_backend_crash b msg =
   match known_compile_crash msg with
   | Some _ as found -> found
@@ -40,6 +41,9 @@ let known_backend_crash b msg =
       List.mem "-caml-apply-inline-fast-path" b.argv
       && Text.contains msg "CFG comparison MISMATCH"
     then Some "SSA validator with the caml_apply fast path"
+    else if
+      List.mem "-cfg-block-layout" b.argv && Text.contains msg "Block flags mismatch"
+    then Some "SSA validator with block layout"
     else None
 ;;
 
