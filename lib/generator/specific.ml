@@ -225,9 +225,11 @@ let string_forms ctx env gen =
       let char_expr = expr loop_env Char in
       let str_expr = expr loop_env Str in
       let count_expr = expr env Int in
+      (* At most two copies of the string: inside a recursion of up to 15 steps that
+         feeds it back, more copies grow it past any memory. *)
       [%string
         "(let %{buffer} = Buffer.create (%{expr env Int} land 15) in for %{loop_var} = 0 \
-         to (%{count_expr} land 7) do Buffer.add_string %{buffer} %{str_expr}; \
+         to (%{count_expr} land 1) do Buffer.add_string %{buffer} %{str_expr}; \
          Buffer.add_char %{buffer} %{char_expr} done; Buffer.contents %{buffer})"])
   ; (fun () ->
       let string_var = fresh ctx "s" in
