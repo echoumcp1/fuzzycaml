@@ -44,7 +44,13 @@ let gen_decl ctx =
     let own_constructors () =
       repeat ctx 1 4 (fun _ ->
         let constructor = fresh ctx (if poly then "`C" else "C") in
-        let args = repeat ctx 0 3 (fun _ -> first_order_type ctx) in
+        (* Unboxed arguments make the constructor's block mixed. *)
+        let args =
+          repeat ctx 0 3 (fun _ ->
+            if !ox_mode && (not poly) && flip ~p:0.3 ctx
+            then unboxed ()
+            else first_order_type ctx)
+        in
         if (not poly) && args <> [] && flip ~p:0.3 ctx
         then inline_records := constructor :: !inline_records;
         constructor, args)
