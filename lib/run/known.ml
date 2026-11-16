@@ -14,6 +14,8 @@ open Exec
      element type.
    - OxCaml: an apply_cont with fewer arguments than its continuation, from
      a local function applied to the contents of a ref.
+   - OxCaml: a mixed block of more than 256 words with an int8# or int16#
+     field, which allocation in the major heap does not support.
    Bugs that the patched switches fix are not listed. *)
 let known_compile_crash msg =
   List.find_opt
@@ -27,6 +29,7 @@ let known_compile_crash msg =
     ; "arguments but got apply_cont"
     ; "Bytegen.merge_repr"
     ; "No size found for Static binding"
+    ; "are not supported in generic allocations"
     ]
 ;;
 
