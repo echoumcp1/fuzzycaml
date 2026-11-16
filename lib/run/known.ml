@@ -194,7 +194,9 @@ let known_bug ~rerun backends results source =
                    Some
                      (match result with
                       (* The reaper can drop the code of a partially applied
-                         function that is still referenced. *)
+                         function that is still referenced, and its unboxing
+                         analysis can use unbounded memory unless unboxing is
+                         limited. *)
                       | Compile_error msg
                         when List.mem "-flambda2-reaper" b.argv || List.mem "-O4" b.argv
                         ->
@@ -205,6 +207,17 @@ let known_bug ~rerun backends results source =
                              Text.contains msg "Undefined symbols"
                              || Text.contains msg "undefined reference"
                            then Some "reaper: undefined symbol"
+                           else if
+                             String.starts_with ~prefix:(show_exit Out_of_memory) msg
+                             && List.for_all
+                                  agrees
+                                  (rerun
+                                     ~edit:Fun.id
+                                     [ { b with
+                                         argv = b.argv @ [ "-reaper-max-unbox-size"; "1" ]
+                                       }
+                                     ])
+                           then Some "reaper: unbounded memory"
                            else None)
                       | Compile_error msg -> known_backend_crash b msg
                       (* -flambda2-reaper with phantom lets aborts at run time. *)
