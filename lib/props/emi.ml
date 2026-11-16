@@ -15,20 +15,41 @@ let has_regions source = Text.contains source "(*<"
 let hits_tag = "emi hits:"
 
 (* The original, recording which regions it evaluates and printing them to
-   stderr at exit, even after an uncaught exception. Its zero_alloc checks are
+   stderr at exit, even after an uncaught exception. A region is recorded
+   without allocating: an interrupt raised at an allocation inside a Hashtbl
+   update loses the regions recorded before it. Its zero_alloc checks are
    dropped, since the checker may reject one before the run drops that test. *)
 let covered source =
   let source = Markers.without_all [ "[@zero_alloc strict]"; "[@zero_alloc]" ] source in
-  {|let emi_hits = Hashtbl.create 64
-let emi_hit k = Hashtbl.replace emi_hits k ()
+  let indices = Hashtbl.create 64 in
+  let index key =
+    match Hashtbl.find_opt indices key with
+    | Some i -> i
+    | None ->
+      let i = Hashtbl.length indices in
+      Hashtbl.add indices key i;
+      i
+  in
+  let body =
+    Markers.relabel
+      ~opening:"(*<"
+      (fun key -> [%string "(emi_hit %{index key#Int}; "])
+      (Markers.relabel ~opening:"(*>" (Fun.const ")") source)
+  in
+  let keys = Array.make (Hashtbl.length indices) "" in
+  Hashtbl.iter (fun key i -> keys.(i) <- Printf.sprintf "%S" key) indices;
+  let keys = String.concat "; " (Array.to_list keys) in
+  {|let emi_hits = Bytes.make |}
+  ^ string_of_int (Hashtbl.length indices)
+  ^ {| '\000'
+let emi_hit i = Bytes.unsafe_set emi_hits i '\001'
 let () = at_exit (fun () -> prerr_string "\n|}
   ^ hits_tag
-  ^ {|"; Hashtbl.iter (fun k () -> prerr_string (" " ^ k)) emi_hits; prerr_newline ())
+  ^ {|"; Array.iteri (fun i k -> if Bytes.get emi_hits i <> '\000' then prerr_string (" " ^ k)) [| |}
+  ^ keys
+  ^ {| |]; prerr_newline ())
 |}
-  ^ Markers.relabel
-      ~opening:"(*<"
-      (fun key -> [%string {|(emi_hit "%{key}"; |}])
-      (Markers.relabel ~opening:"(*>" (Fun.const ")") source)
+  ^ body
 ;;
 
 let hits err =
