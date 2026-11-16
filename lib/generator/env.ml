@@ -99,6 +99,6 @@ type gen =
 let fresh_record ctx env gen decl =
   match ctx.decls.(decl) with
   | Record fields ->
-    [%string "({ %{field_values (gen.expr env) (field_types fields)} } : t%{decl#Int})"]
+    [%string "({ %{Literal.record_values ctx (gen.expr env) fields} } : t%{decl#Int})"]
   | URecord _ | Variant _ -> invalid_arg "fresh_record"
 ;;
