@@ -41,15 +41,28 @@ let spawn ~dir argv =
       , In_channel.with_open_bin err In_channel.input_all ) )
 ;;
 
-let resident_mb pids =
-  let pids = String.concat "," (List.map string_of_int pids) in
-  (* ps exits 1 when one of the processes has finished, so its status is ignored. *)
-  let ic = Unix.open_process_args_in "ps" [| "ps"; "-o"; "pid=,rss="; "-p"; pids |] in
+(* top's footprint, unlike ps's resident size, counts memory that macOS has
+   compressed or swapped out, which a compile using too much memory soon is. *)
+let memory_mb pids =
+  let ic =
+    Unix.open_process_args_in
+      "top"
+      (Array.of_list
+         ([ "top"; "-l"; "1"; "-stats"; "pid,mem" ]
+          @ List.concat_map (fun pid -> [ "-pid"; string_of_int pid ]) pids))
+  in
   let out = In_channel.input_all ic in
   ignore (Unix.close_process_in ic);
   String.split_on_char '\n' out
   |> List.filter_map (fun line ->
-    Scanf.sscanf_opt line " %d %d" (fun pid kb -> pid, kb / 1024))
+    Scanf.sscanf_opt line " %d %f%c" (fun pid size unit ->
+      match unit with
+      | 'B' -> Some (pid, 0)
+      | 'K' -> Some (pid, int_of_float (size /. 1024.))
+      | 'M' -> Some (pid, int_of_float size)
+      | 'G' -> Some (pid, int_of_float (size *. 1024.))
+      | _ -> None)
+    |> Option.join)
 ;;
 
 let wait_all ?max_mb ~timeout pids =
@@ -67,11 +80,16 @@ let wait_all ?max_mb ~timeout pids =
     let elapsed = now -. start -. !asleep in
     let over_memory =
       match max_mb with
-      | Some max_mb when now -. !last_memory_check > 0.5 ->
+      | Some max_mb when now -. !last_memory_check > 1. ->
         last_memory_check := now;
-        List.filter_map
-          (fun (pid, mb) -> if mb > max_mb then Some pid else None)
-          (resident_mb pids)
+        let over =
+          List.filter_map
+            (fun (pid, mb) -> if mb > max_mb then Some pid else None)
+            (memory_mb pids)
+        in
+        (* top takes about half a second, which is not the machine sleeping. *)
+        last_poll := Unix.gettimeofday ();
+        over
       | _ -> []
     in
     let kill pid status =
@@ -222,7 +240,13 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
            compiled
        in
        let run_timeout = 10. in
-       let ran = wait_all ~timeout:run_timeout (List.filter_map (Option.map fst) runs) in
+       (* A program that allocates without bound is one that does not stop, and
+          left running it fills swap and so the disk. *)
+       let ran =
+         wait_all ~max_mb:512 ~timeout:run_timeout (List.filter_map (Option.map fst) runs)
+         |> List.map (fun (status, seconds) ->
+           (if status = Out_of_memory then Timeout else status), seconds)
+       in
        let ran_backends =
          List.filter_map
            (fun (b, run) -> Option.map (fun _ -> b) run)
