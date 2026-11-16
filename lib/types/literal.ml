@@ -275,6 +275,16 @@ and construct constructor = function
   | args -> [%string {|(%{constructor} (%{String.concat ", " args}))|}]
 ;;
 
+(* Blocks of more words are allocated in the major heap directly. *)
+let max_young_words = 256
+let big_record fields = List.length fields > max_young_words
+
+(* A field of a big record can read a field of another one, so drawing an
+   expression for each field grows the program exponentially. *)
+let record_values ctx value fields =
+  field_values (if big_record fields then literal ctx else value) (field_types fields)
+;;
+
 (* [raise Exit] at any type. raise only has value types, so unboxed results are
    built around it. *)
 let rec raise_at ctx ty =

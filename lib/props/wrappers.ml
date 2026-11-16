@@ -288,6 +288,9 @@ let rec layer ctx env ty gen x =
          (fields_of_ty <> [])
          [ (fun () ->
              let { record_decl; field; fields; unboxed } = pick ctx fields_of_ty in
+             let other_field =
+               if big_record fields then literal ctx else fun ty -> junk env ty gen
+             in
              let build_record x =
                String.concat
                  "; "
@@ -295,7 +298,7 @@ let rec layer ctx env ty gen x =
                     (fun (name, field_ty) ->
                        if name = field
                        then [%string "%{name} = %{x}"]
-                       else [%string "%{name} = %{junk env field_ty gen}"])
+                       else [%string "%{name} = %{other_field field_ty}"])
                     fields)
              in
              let hash = if unboxed then "#" else "" in

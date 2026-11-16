@@ -19,7 +19,7 @@ let local_binding ctx env ty gen =
     | Named i ->
       (match ctx.decls.(i) with
        | Record fields ->
-         Some (fun () -> [%string "{ %{field_values (expr env) (field_types fields)} }"])
+         Some (fun () -> [%string "{ %{record_values ctx (expr env) fields} }"])
        | Variant constrs ->
          (match List.filter (fun (_, args) -> args <> []) constrs with
           | [] -> None

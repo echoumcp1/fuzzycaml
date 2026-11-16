@@ -5,31 +5,40 @@ open Gen_ty
 open Literal
 
 let gen_decl ctx =
+  let unboxed () =
+    if on "numbers" then Unboxed (pick ctx unboxed_numbers) else unboxed_float
+  in
   if on "records" && flip ctx
   then (
-    let all_float = flip ~p:0.3 ctx in
-    let float_ty = if !ox_mode && flip ctx then unboxed_float else Float in
-    let unboxed_records =
-      List.filter
-        (fun i -> !unboxed_record_decls.(i))
-        (List.init (Array.length ctx.decls) Fun.id)
+    let field field_ty =
+      { name = fresh ctx "f"; ty = field_ty; is_mutable = flip ~p:0.3 ctx }
     in
-    let unboxed () =
-      if on "numbers" then Unboxed (pick ctx unboxed_numbers) else unboxed_float
-    in
-    Record
-      (repeat ctx 1 4 (fun _ ->
-         let field = fresh ctx "f" in
-         let field_ty =
-           if all_float
-           then float_ty
-           else if unboxed_records <> [] && flip ~p:0.3 ctx
-           then Named (pick ctx unboxed_records)
-           else if !ox_mode && flip ~p:0.25 ctx
-           then unboxed ()
-           else first_order_type ctx
-         in
-         { name = field; ty = field_ty; is_mutable = flip ~p:0.3 ctx })))
+    (* A big mixed record is scanned in the major heap without passing through
+       the minor heap. *)
+    if !ox_mode && flip ~p:0.05 ctx
+    then
+      Record
+        (List.init
+           (int_in ctx (max_young_words + 1) (max_young_words + 8))
+           (fun _ -> field (if flip ~p:0.4 ctx then unboxed () else Int)))
+    else (
+      let all_float = flip ~p:0.3 ctx in
+      let float_ty = if !ox_mode && flip ctx then unboxed_float else Float in
+      let unboxed_records =
+        List.filter
+          (fun i -> !unboxed_record_decls.(i))
+          (List.init (Array.length ctx.decls) Fun.id)
+      in
+      Record
+        (repeat ctx 1 6 (fun _ ->
+           field
+             (if all_float
+              then float_ty
+              else if unboxed_records <> [] && flip ~p:0.3 ctx
+              then Named (pick ctx unboxed_records)
+              else if !ox_mode && flip ~p:0.4 ctx
+              then unboxed ()
+              else first_order_type ctx)))))
   else (
     let poly = (not !ox_mode) && on "poly" && flip ~p:0.35 ctx in
     let own_constructors () =

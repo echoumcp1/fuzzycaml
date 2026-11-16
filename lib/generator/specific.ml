@@ -465,7 +465,7 @@ let named_forms ctx env ty gen decl =
            else [])
         !extended_variants
   | Record fields ->
-    let field_values_expr () = field_values (expr env) (field_types fields) in
+    let field_values_expr () = record_values ctx (expr env) fields in
     [ (fun () -> [%string "{ %{field_values_expr ()} }"])
     ; (fun () ->
         let field = pick ctx fields in
