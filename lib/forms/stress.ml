@@ -260,6 +260,45 @@ let walked ctx env ty gen =
   [%string "(let %{x} : %{ty#Ty} = %{gen.expr env ty} in %{walk ctx x ty})"]
 ;;
 
+(* A copy of a closure holds copies of what it captures, and what that is
+   depends on what the backend keeps in the closure rather than in a static
+   symbol. Declared types hold no functions. *)
+let rec closure_free = function
+  | Arrow _ -> false
+  | List t | Option t | Arr t | Or_null t -> closure_free t
+  | Pair (a, b) -> closure_free a && closure_free b
+  | UTuple tys -> List.for_all closure_free tys
+  | Int | Bool | Float | Char | Int64 | Str | Named _ | Num _ | Unboxed _ -> true
+;;
+
+(* Marshal walks [x] by its layout to copy it, and refuses mixed blocks, which
+   the erased version does not have, so a refusal is not seen. *)
+let marshal ctx x ty =
+  let flags =
+    pick
+      ctx
+      ([ "[]"; "[ Marshal.Closures ]" ]
+       (* A recursive value is cyclic. *)
+       @ if on "recvals" then [] else [ "[ Marshal.No_sharing ]" ])
+  in
+  let copy =
+    if flip ctx
+    then [%string "Marshal.from_string (Marshal.to_string %{x} %{flags}) 0"]
+    else (
+      let offset = int_in ctx 1 9 in
+      [%string
+        "Marshal.from_bytes (Bytes.cat (Bytes.make %{offset#Int} 'm') \
+         (Marshal.to_bytes          %{x} %{flags})) %{offset#Int}"])
+  in
+  [%string
+    "(match (%{copy} : %{ty#Ty}) with y -> y | exception Invalid_argument _ -> %{x})"]
+;;
+
+let marshaled ctx env ty gen =
+  let x = fresh ctx "x" in
+  [%string "(let %{x} : %{ty#Ty} = %{gen.expr env ty} in %{marshal ctx x ty})"]
+;;
+
 (* Records with an unboxed field, which the runtime scans differently from other
    records. Few expressions have their type, so a fresh one is walked beside the
    expression, which can then read it. *)
@@ -273,7 +312,7 @@ let mixed_records ctx =
     (indexed_decls ctx)
 ;;
 
-let walked_mixed ctx env ty gen decls =
+let walked_mixed ctx env ty gen decls ~walk =
   let decl = pick ctx decls in
   let x = fresh ctx "x" in
   let record_ty = Named decl in
@@ -299,8 +338,15 @@ let forms ctx env ty gen =
   @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty gen) ] else [])
   @ (if on "gc" then barrier ctx env ty gen else [])
   @ (let decls = mixed_records ctx in
-     if on "gc" && decls <> []
-     then [ (fun () -> walked_mixed ctx env ty gen decls) ]
+     (if on "gc" && decls <> []
+      then [ (fun () -> walked_mixed ctx env ty gen decls ~walk) ]
+      else [])
+     @
+     if on "marshal" && decls <> []
+     then [ (fun () -> walked_mixed ctx env ty gen decls ~walk:marshal) ]
+     else [])
+  @ (if value && on "marshal" && closure_free ty
+     then [ (fun () -> marshaled ctx env ty gen) ]
      else [])
   @ boost
       (if value && on "interrupts" then [ (fun () -> interrupted env ty gen) ] else [])
