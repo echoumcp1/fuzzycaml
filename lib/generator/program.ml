@@ -52,13 +52,28 @@ let start_program ~ox ~effect_syntax tc =
   if not !erase then Emi.regions := [];
   ox_mode := ox;
   extended_variants := [];
-  let forced =
-    Option.fold
-      ~none:[]
-      ~some:(String.split_on_char ',')
-      (Sys.getenv_opt "FUZZYCAML_FEATURES")
+  let listed name =
+    let names =
+      Option.fold ~none:[] ~some:(String.split_on_char ',') (Sys.getenv_opt name)
+      |> List.filter (( <> ) "")
+    in
+    List.iter
+      (fun f ->
+         if not (List.mem f all_features)
+         then failwith [%string "%{name}: unknown feature %{f}"])
+      names;
+    names
   in
-  features := List.filter (fun f -> Draw.bool tc || List.mem f forced) all_features;
+  let forced = listed "FUZZYCAML_FEATURES" in
+  let pool =
+    match listed "FUZZYCAML_SWARM" with
+    | [] -> all_features
+    | names -> names
+  in
+  features
+  := List.filter
+       (fun f -> (List.mem f pool && Draw.bool tc) || List.mem f forced)
+       all_features;
   effect_syntax_on := effect_syntax;
   not_first_order_decls := [||];
   unboxed_record_decls := [||];
