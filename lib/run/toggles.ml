@@ -51,6 +51,22 @@ let ox_toggles =
   ; "-flambda2-expert-cont-specialization-threshold 1000"
   ; "-no-flambda2-simplify-stubs"
   ; "-g -gdwarf-may-alter-codegen -gdwarf-may-alter-codegen-experimental"
+  ; "-flambda2-debug-concrete-types-only-on-canonicals"
+  ; "-X flambda2-meet-strategy=hybrid"
+  ]
+;;
+
+(* Only drawn when the reaper runs, which they configure. *)
+let reaper_toggles =
+  [ "-reaper-preserve-direct-calls never"
+  ; "-reaper-preserve-direct-calls always"
+  ; "-reaper-preserve-direct-calls zero-alloc"
+  ; "-reaper-preserve-direct-calls auto"
+  ; "-reaper-local-fields"
+  ; "-no-reaper-unbox"
+  ; "-reaper-max-unbox-size 1"
+  ; "-no-reaper-change-calling-conventions"
+  ; "-lto-support"
   ]
 ;;
 
@@ -74,6 +90,11 @@ let with_toggles tc backends =
   let levels = [ "-O3"; ""; "-O2"; "-Oclassic"; "-O4" ] in
   let level = List.nth levels (Draw.int tc 0 (List.length levels - 1)) in
   let picked = List.filter (fun _ -> Draw.bool ~p:0.08 tc) ox_toggles in
+  let picked =
+    if level = "-O4" || List.mem "-flambda2-reaper" picked
+    then picked @ List.filter (fun _ -> Draw.bool ~p:0.25 tc) reaper_toggles
+    else picked
+  in
   List.map
     (fun b ->
        if String.ends_with ~suffix:"-toggles" b.name
