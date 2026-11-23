@@ -20,7 +20,22 @@ let gen_decl ctx =
       Record
         (List.init
            (int_in ctx (max_young_words + 1) (max_young_words + 8))
-           (fun _ -> field (if flip ~p:0.4 ctx then unboxed () else Int)))
+           (fun _ ->
+              field
+                (if flip ~p:0.4 ctx
+                 then
+                   (* int8# and int16# fields crash the compiler here, a known bug that
+                      would otherwise end most of these programs. *)
+                   if on "numbers"
+                   then
+                     Unboxed
+                       (pick
+                          ctx
+                          (List.filter
+                             (fun n -> n <> UInt8 && n <> UInt16)
+                             unboxed_numbers))
+                   else unboxed_float
+                 else Int)))
     else (
       let all_float = flip ~p:0.3 ctx in
       let float_ty = if !ox_mode && flip ctx then unboxed_float else Float in
@@ -156,8 +171,10 @@ let rec pattern ?(at_root = false) ctx ty depth ~binds =
       (match ctx.decls.(decl) with
        | Record fields ->
          [ (fun () ->
+             (* Compiling or-patterns takes time exponential in how many fields
+                hold one, so a big record mentions only a few. *)
              let picked =
-               match subset ctx 4 fields with
+               match List.filteri (fun i _ -> i < 8) (subset ctx 4 fields) with
                | [] -> [ List.hd fields ]
                | picked -> picked
              in
