@@ -377,6 +377,33 @@ let same_branches env ty gen =
   else []
 ;;
 
+(* Guards that write to the matched record. Which arm runs after such a write is
+   unspecified, so the match's value is dropped and only a crash shows. *)
+let guard_writes ctx env ty gen =
+  let expr = gen.expr in
+  let decl, mutable_fields = pick ctx (mutable_records ctx) in
+  let record = fresh ctx "s" in
+  let inner = pure env in
+  let arm () =
+    let pattern, bound = pattern ~at_root:true ctx (Named decl) 3 ~binds:true in
+    let arm_env = bind_all inner bound in
+    let guard =
+      if flip ~p:0.7 ctx
+      then (
+        let field = pick ctx mutable_fields in
+        [%string
+          " when (%{record}.%{field.name} <- %{expr arm_env field.ty}; %{expr arm_env \
+           Bool})"])
+      else ""
+    in
+    [%string "| %{pattern}%{guard} -> %{expr arm_env Int}"]
+  in
+  let arms = String.concat " " (List.init (int_in ctx 2 4) (fun _ -> arm ())) in
+  [%string
+    "(ignore (Sys.opaque_identity (let %{record} = %{fresh_record ctx inner gen decl} in \
+     match %{record} with %{arms} | _ -> 0)); %{expr env ty})"]
+;;
+
 let generic ctx env ty gen =
   [ (fun () -> if_then_else env ty gen)
   ; (fun () -> let_binding ctx env ty gen)
@@ -398,6 +425,9 @@ let generic ctx env ty gen =
        ; (fun () -> second_of_pair ctx env ty gen)
        ; (fun () -> list_fold ctx env ty gen)
        ])
+  @ gate
+      (on "mutables" && mutable_records ctx <> [])
+      [ (fun () -> guard_writes ctx env ty gen) ]
   @ field_reads env ty gen (indexed_decls ctx)
   @ array_reads ctx env ty gen
   @ Ox.forms ctx env ty gen
