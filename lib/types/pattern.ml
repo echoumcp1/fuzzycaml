@@ -143,7 +143,12 @@ let rec pattern ?(at_root = false) ctx ty depth ~binds =
                ]))
       ]
     | Str -> [ (fun () -> without_vars (string_literal ctx)) ]
-    | Float | Arrow _ | Num _ | Unboxed _ | UTuple _ | Or_null _ | Arr _ -> []
+    | Float | Arrow _ | Num _ | Unboxed _ | Or_null _ | Arr _ -> []
+    | UTuple tys ->
+      [ (fun () ->
+          let parts = List.map smaller tys in
+          utuple (List.map fst parts), List.concat_map snd parts)
+      ]
     | List elem_ty ->
       [ (fun () -> without_vars "[]")
       ; (fun () ->
@@ -194,7 +199,25 @@ let rec pattern ?(at_root = false) ctx ty depth ~binds =
               let parts = List.map smaller args in
               construct constructor (List.map fst parts), List.concat_map snd parts)
            constrs
-       | URecord _ -> [])
+       | URecord fields ->
+         [ (fun () ->
+             let picked =
+               match subset ctx 4 fields with
+               | [] -> [ List.hd fields ]
+               | picked -> picked
+             in
+             let parts =
+               List.map (fun (name, field_ty) -> name, smaller field_ty) picked
+             in
+             ( urecord
+                 (String.concat
+                    ""
+                    (List.map
+                       (fun (name, (pat, _)) -> [%string "%{name} = %{pat}; "])
+                       parts)
+                  ^ "_")
+             , List.concat_map (fun (_, (_, bound)) -> bound) parts ))
+         ])
   in
   let combined =
     if structural = []
