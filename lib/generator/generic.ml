@@ -449,6 +449,7 @@ let generic ctx env ty gen =
   @ Simd.forms ctx env ty gen
   @ Functors.forms ctx env ty gen
   @ Stress.forms ctx env ty gen
+  @ Polyvariants.forms ctx env ty gen
   @ Exceptions.forms ctx env ty gen
   @ boost (same_branches env ty gen)
   @ Loops.forms ctx env ty gen
