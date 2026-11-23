@@ -10,10 +10,12 @@ type version =
   | Variant
   | Emi
 
+(* [heap] is added to OCAMLRUNPARAM when the program runs. *)
 type backend =
   { name : string
   ; argv : string list
   ; version : version
+  ; heap : string
   }
 
 let read_process cmd =
@@ -94,18 +96,21 @@ let discover ~ox =
         { name = [%string "%{switch}/ocamlopt%{suffix}"]
         ; argv = nat flags
         ; version = Original
+        ; heap = ""
         }
       in
       let byte =
         { name = [%string "%{switch}/ocamlc"]
         ; argv = (ocamlc :: libs ".cma") @ [ "-runtime-variant"; "d" ]
         ; version = Original
+        ; heap = ""
         }
       in
       let toplevel =
         { name = [%string "%{switch}/ocaml"]
         ; argv = Filename.concat bin "ocaml" :: libs ".cma"
         ; version = Original
+        ; heap = ""
         }
       in
       if ox
@@ -170,6 +175,7 @@ let extra () =
             |> String.split_on_char ' '
             |> List.filter (( <> ) "")
         ; version = Original
+        ; heap = ""
         })
 ;;
 

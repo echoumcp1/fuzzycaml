@@ -80,6 +80,19 @@ let for_upstream source =
   |> String.concat "\n"
 ;;
 
+(* Half the runs collect far more often: every 257 words of allocation in the
+   minor heap, or with the major GC working as eagerly as it can. The toplevel
+   is left out, since its compiler runs under the same settings. *)
+let with_heaps tc backends =
+  let heaps = [ "s=257"; "s=4k"; "s=257,o=1"; "o=1" ] in
+  List.map
+    (fun b ->
+       if is_toplevel b || not (Draw.bool tc)
+       then b
+       else { b with heap = List.nth heaps (Draw.int tc 0 (List.length heaps - 1)) })
+    backends
+;;
+
 let generate ~ox ~effect_syntax backends tc =
   let upstreams, backends = List.partition upstream backends in
   let versions = { erased = ""; emi = ""; profiler = List.nth_opt backends 0 } in
@@ -108,7 +121,7 @@ let generate ~ox ~effect_syntax backends tc =
       @ if Emi.has_regions source then List.map (compiling Emi) backends else [])
     else backends
   in
-  backends, source, versions
+  with_heaps tc backends, source, versions
 ;;
 
 let version_source versions b source =
@@ -330,9 +343,7 @@ let check ~ox ~effect_syntax backends tc =
     note tc ("(* erased *)\n" ^ versions.erased);
     if Markers.has_wrappers source then note tc ("(* variant *)\n" ^ Markers.clean source))
   else note tc source;
-  let key =
-    Digest.string (String.concat "\000" (source :: List.map (fun b -> b.name) backends))
-  in
+  let key = Digest.string (String.concat "\000" (source :: List.map display backends)) in
   if Hashtbl.length outcomes > 100_000 then Hashtbl.reset outcomes;
   match Hashtbl.find_opt outcomes key with
   | Some None -> ()

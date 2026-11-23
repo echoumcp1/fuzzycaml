@@ -13,7 +13,12 @@ let clean_env =
 
 (* An 8MB stack, which a loop of a million calls overflows unless they are tail
    calls. *)
-let run_env = Array.append clean_env [| "OCAMLRUNPARAM=l=1M" |]
+let run_env b =
+  let heap = if b.heap = "" then "" else "," ^ b.heap in
+  Array.append clean_env [| "OCAMLRUNPARAM=l=1M" ^ heap |]
+;;
+
+let display b = if b.heap = "" then b.name else [%string "%{b.name} [%{b.heap}]"]
 
 type exit =
   | Exited of int
@@ -238,7 +243,7 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
          List.map2
            (fun (b, dir) status ->
               match status with
-              | Exited 0 -> Some (spawn ~env:run_env ~dir (run b dir))
+              | Exited 0 -> Some (spawn ~env:(run_env b) ~dir (run b dir))
               | _ -> None)
            (List.combine backends dirs)
            compiled
@@ -322,9 +327,9 @@ let report backends results =
        if List.mem_assoc text groups
        then
          List.map
-           (fun (t, names) -> t, if t = text then names @ [ b.name ] else names)
+           (fun (t, names) -> t, if t = text then names @ [ display b ] else names)
            groups
-       else groups @ [ text, [ b.name ] ])
+       else groups @ [ text, [ display b ] ])
     []
     backends
     results
