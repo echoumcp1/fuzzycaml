@@ -437,6 +437,7 @@ let generic ctx env ty gen =
   @ Ticks.forms ctx env ty gen
   @ Effects.forms ctx env ty gen
   @ Laziness.forms ctx env ty gen
+  @ Letops.forms ctx env ty gen
   @ Rec_values.forms ctx env ty gen
   @ Strings.forms ctx env ty gen
   @ Gadt.forms ctx env ty gen

@@ -75,6 +75,7 @@ let all_features =
   ; "addresses"
   ; "arrayops"
   ; "polyvariants"
+  ; "letops"
   ]
 ;;
 
