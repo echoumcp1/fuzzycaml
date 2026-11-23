@@ -58,6 +58,7 @@ let all_features =
   ; "shallow"
   ; "strings"
   ; "tmc"
+  ; "tailcalls"
   ; "mutables"
   ; "numbers"
   ; "or_null"

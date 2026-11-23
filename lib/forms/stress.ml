@@ -116,6 +116,68 @@ let many_args ctx env ty gen =
      %{count_expr} land 7 in %{outer_lets}%{head} %{outer_args})"]
 ;;
 
+(* A million calls in tail position, which overflow the stack programs run with
+   unless each is a tail call. The loop only passes values through, so that it
+   stays fast. *)
+let tail_loop ctx env ty gen =
+  let fn = fresh ctx "go" in
+  let other = fresh ctx "go" in
+  let n = fresh ctx "n" in
+  let acc = fresh ctx "acc" in
+  let mutual = flip ctx in
+  let callee = if mutual then other else fn in
+  let call () =
+    pick
+      ctx
+      [ [%string "%{callee} (%{n} - 1) %{acc}"]
+      ; [%string "(Sys.opaque_identity %{callee}) (%{n} - 1) %{acc}"]
+      ]
+  in
+  let opaque_n = [%string "Sys.opaque_identity %{n}"] in
+  let rec step depth =
+    let inner () = if depth = 0 then call () else step (depth - 1) in
+    choose
+      ctx
+      ([ (fun () -> [%string "(if %{n} land 1 = 0 then %{inner ()} else %{inner ()})"])
+       ; (fun () ->
+           [%string
+             "(match %{n} land 3 with 0 -> %{inner ()} | 1 -> %{inner ()} | _ -> %{inner \
+              ()})"])
+       ; (fun () ->
+           let x = fresh ctx "x" in
+           [%string
+             "(let %{x} = %{n} + 1 in if Sys.opaque_identity %{x} = 0 then %{acc} else \
+              %{inner ()})"])
+       ; (fun () -> [%string "(ignore (%{opaque_n}); %{inner ()})"])
+       ; (fun () -> [%string "((try ignore (%{opaque_n}) with Exit -> ()); %{inner ()})"])
+       ; (fun () ->
+           [%string
+             "(match %{opaque_n} with _ -> %{inner ()} | exception Exit -> %{acc})"])
+       ; (fun () -> [%string "(%{inner ()} : %{ty#Ty})"])
+       ]
+       @
+       if !ox_mode && on "locals"
+       then
+         [ (fun () ->
+             let r = fresh ctx "r" in
+             let local = ox_syntax "local_ " "" in
+             [%string
+               "(let %{local}%{r} = ref %{n} in ignore (Sys.opaque_identity !%{r}); \
+                %{inner ()})"])
+         ]
+       else [])
+  in
+  let signature = [%string "(%{n} : int) (%{acc} : %{ty#Ty}) : %{ty#Ty}"] in
+  let other_def =
+    if mutual then [%string " and %{other} %{signature} = %{fn} %{n} %{acc}"] else ""
+  in
+  let attr = pick ctx [ ""; "[@inline never]" ] in
+  let body = step (int_in ctx 0 2) in
+  [%string
+    "(let%{attr} rec %{fn} %{signature} = if %{n} <= 0 then %{acc} else \
+     %{body}%{other_def} in %{fn} 1_000_000 %{gen.expr env ty})"]
+;;
+
 (* Fresh allocations live across a collection and are used afterward, so the GC
    must find them wherever the backend keeps them, and skip the unboxed values
    among them. *)
@@ -230,6 +292,10 @@ let forms ctx env ty gen =
   let value = not (restricted ty) in
   (if first_order ty then [ (fun () -> pressure ctx env ty gen) ] else [])
   @ (if value && on "manyargs" then [ (fun () -> many_args ctx env ty gen) ] else [])
+  (* Inside a function, the loop could run once per call. *)
+  @ (if value && on "tailcalls" && not env.in_fun
+     then [ (fun () -> tail_loop ctx env ty gen) ]
+     else [])
   @ boost (if value && on "gc" then [ (fun () -> gc ctx env ty gen) ] else [])
   @ (if on "gc" then barrier ctx env ty gen else [])
   @ (let decls = mixed_records ctx in
