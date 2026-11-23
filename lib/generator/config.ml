@@ -76,6 +76,7 @@ let all_features =
   ; "arrayops"
   ; "polyvariants"
   ; "letops"
+  ; "marshal"
   ]
 ;;
 
