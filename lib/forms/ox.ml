@@ -225,9 +225,11 @@ let indices ctx env ty gen =
           in
           ox_syntax
             [%string
-              "(let %{array} = %{array_expr} in Stdlib_stable.Idx_mut.get %{array} \
-               (Stdlib_stable.Idx_mut.unsafe_create_into_array %{position}))"]
-            [%string "(let %{array} = %{array_expr} in array_get %{array} %{position})"])
+              "(let %{array} : %{Arr ty#Ty} = %{array_expr} in Stdlib_stable.Idx_mut.get \
+               %{array} (Stdlib_stable.Idx_mut.unsafe_create_into_array %{position}))"]
+            [%string
+              "(let %{array} : %{Arr ty#Ty} = %{array_expr} in array_get %{array} \
+               %{position})"])
       ]
   in
   reads @ writes @ elements
@@ -316,8 +318,8 @@ let addresses ctx env ty gen =
               ~erased_read:[%string "array_get %{array} %{position}"]
           in
           [%string
-            "(let %{array} = %{array_expr} in let %{position} = (%{position_expr} land \
-             max_int) mod array_length %{array} in %{body})"])
+            "(let %{array} : %{Arr ty#Ty} = %{array_expr} in let %{position} = \
+             (%{position_expr} land max_int) mod array_length %{array} in %{body})"])
       ]
   in
   fields @ elements
