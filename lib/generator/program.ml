@@ -139,7 +139,8 @@ let declare_types ctx items ~ox =
     let decl = gen_decl ctx in
     let index = declare ctx items decl in
     match decl with
-    | Record fields when urecords && flip ctx ->
+    (* An unboxed record holds at most 254 values. *)
+    | Record fields when urecords && (not (Literal.big_record fields)) && flip ctx ->
       let unboxed =
         declare
           ctx
