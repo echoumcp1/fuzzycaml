@@ -102,3 +102,15 @@ let fresh_record ctx env gen decl =
     [%string "({ %{Literal.record_values ctx (gen.expr env) fields} } : t%{decl#Int})"]
   | URecord _ | Variant _ -> invalid_arg "fresh_record"
 ;;
+
+let mutable_records ctx =
+  List.filter_map
+    (fun (decl, decl_def) ->
+       match decl_def with
+       | Record fields ->
+         (match List.filter (fun (field : record_field) -> field.is_mutable) fields with
+          | [] -> None
+          | mutable_fields -> Some (decl, mutable_fields))
+       | URecord _ | Variant _ -> None)
+    (indexed_decls ctx)
+;;
