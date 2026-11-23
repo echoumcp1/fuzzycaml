@@ -24,6 +24,7 @@ Environment variables:
 - `FUZZYCAML_DATABASE=dir`: save failures in Hegel's database at `dir`, so a later run replays them first.
 - `FUZZYCAML_REPLAY=blob`: replay a failure blob (printed after a failure as `rerun with`) and report it as is, without shrinking; fails if it no longer reproduces.
 - `FUZZYCAML_FEATURES=a,b`: enable these features in every program (see `all_features` in `lib/generator/config.ml`).
+- `FUZZYCAML_SWARM=a,b`: draw each program's features from these only.
 - `FUZZYCAML_SAVE=dir`: write programs that hit a known bug to `dir/known<pid>-<n>.ml`, rejected ones to `dir/rejected<pid>-<n>.ml`, and ones whose compile timed out to `dir/slow<pid>-<n>.ml`.
 - `FUZZYCAML_FIXED_OCLASSIC=<ocamlopt>`: a compiler with the flambda `-Oclassic` constant field fix (see `lib/run/known.ml`).
 
