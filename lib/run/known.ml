@@ -176,17 +176,17 @@ let branch_relaxation ~rerun backends results =
 ;;
 
 let known_bug ~rerun backends results source =
+  (* When every backend crashed, as when only one backend can compile the
+     program, all of them are odd, and a rerun must not crash. *)
   let reference =
-    observable
-      (Option.value
-         (List.find_opt
-            (function
-              | Ran _ -> true
-              | Compile_error _ -> false)
-            results)
-         ~default:(List.hd results))
+    List.find_map
+      (fun result ->
+         match result with
+         | Ran _ when not (crashed_running result) -> Some (observable result)
+         | Ran _ | Compile_error _ -> None)
+      results
   in
-  let agrees result = observable result = reference in
+  let agrees result = Some (observable result) = reference in
   let odd =
     List.filter_map
       (fun (b, result) -> if agrees result then None else Some b)
@@ -194,7 +194,15 @@ let known_bug ~rerun backends results source =
   in
   let odd_names = List.map (fun b -> b.name) odd in
   let odd_agree edit_backend =
-    List.for_all agrees (rerun ~edit:Fun.id (List.map edit_backend odd))
+    let rerun_results = rerun ~edit:Fun.id (List.map edit_backend odd) in
+    match reference with
+    | Some _ -> List.for_all agrees rerun_results
+    | None ->
+      (match List.map observable rerun_results with
+       | first :: rest ->
+         (not (List.exists crashed_running rerun_results))
+         && List.for_all (( = ) first) rest
+       | [] -> false)
   in
   let first_of checks = List.find_map (fun check -> check ()) checks in
   if odd = []
