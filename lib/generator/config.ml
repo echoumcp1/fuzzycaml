@@ -73,6 +73,7 @@ let all_features =
   ; "simd"
   ; "indices"
   ; "addresses"
+  ; "arrayops"
   ]
 ;;
 
