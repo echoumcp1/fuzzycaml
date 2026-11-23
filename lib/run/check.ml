@@ -271,10 +271,11 @@ let check_source ~ox tc backends source versions =
   if List.for_all (compile_error (Fun.const true)) results
   then (
     (match
-       List.map
-         (function
-           | Compile_error msg -> known_compile_crash msg
-           | Ran _ -> None)
+       List.map2
+         (fun b -> function
+            | Compile_error msg -> known_backend_crash b msg
+            | Ran _ -> None)
+         backends
          results
      with
      | Some bug :: rest when List.for_all Option.is_some rest -> skip_known bug

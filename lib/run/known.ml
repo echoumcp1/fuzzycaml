@@ -16,6 +16,9 @@ open Exec
      a local function applied to the contents of a ref.
    - OxCaml: a mixed block of more than 256 words with an int8# or int16#
      field, which allocation in the major heap does not support.
+   - OxCaml: a block of more than 256 words allocated inside a try, where an
+     extra parameter of the handler is unset on the allocation's exception
+     edge.
    Bugs that the patched switches fix are not listed. *)
 let known_compile_crash msg =
   List.find_opt
@@ -30,12 +33,17 @@ let known_compile_crash msg =
     ; "Bytegen.merge_repr"
     ; "No size found for Static binding"
     ; "are not supported in generic allocations"
+    ; "unexpectedly live (unknown) at function entry"
+    ; "equations still present at entrypoint"
+    ; "must take exactly one parameter (the exception bucket)"
     ]
 ;;
 
 (* The SSA validator reports mismatches on correct code: with the caml_apply
-   inline fast path, and with block layout on a block's coldness in a
-   [@zero_alloc] function. *)
+   inline fast path, with block layout on a block's coldness in a [@zero_alloc]
+   function, and with the reaper on a match building an unboxed field inside an
+   exception handler. With the n-way join, a concrete type is given to a name
+   that is not canonical. *)
 let known_backend_crash b msg =
   match known_compile_crash msg with
   | Some _ as found -> found
@@ -47,6 +55,12 @@ let known_backend_crash b msg =
     else if
       List.mem "-cfg-block-layout" b.argv && Text.contains msg "Block flags mismatch"
     then Some "SSA validator with block layout"
+    else if List.mem "-use-ssa" b.argv && Text.contains msg "Terminator dbg mismatch"
+    then Some "Terminator dbg mismatch"
+    else if
+      List.mem "-flambda2-debug-concrete-types-only-on-canonicals" b.argv
+      && Text.contains msg "which is not canonical"
+    then Some "concrete type on a name that is not canonical"
     else None
 ;;
 
