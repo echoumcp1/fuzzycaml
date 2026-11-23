@@ -317,5 +317,29 @@ let known_bug ~rerun backends results source =
               && odd_agree (fun b -> { b with argv = fixed :: List.tl b.argv })
             then Some "flambda -Oclassic constant field"
             else None)
+        (* OxCaml -Oclassic does not make a call a tail call when a type
+           constraint with an arrow type is around it and a ref is bound
+           before it. Matches only if every odd backend overflowed the stack
+           and agrees at -O3. *)
+      ; (fun () ->
+          if
+            List.for_all
+              (fun (b, result) ->
+                 agrees result
+                 || (Text.contains b.name "-toggles"
+                     && List.find_opt
+                          (fun flag -> List.mem flag [ "-Oclassic"; "-O2"; "-O3"; "-O4" ])
+                          (List.rev b.argv)
+                        = Some "-Oclassic"
+                     &&
+                     match result with
+                     | Ran (_, _, err) ->
+                       Text.contains err "Stack_overflow"
+                       || Text.contains err "Stack overflow"
+                     | Compile_error _ -> false))
+              (List.combine backends results)
+            && odd_agree (fun b -> { b with argv = b.argv @ [ "-O3" ] })
+          then Some "OxCaml -Oclassic: tail call under an arrow type constraint"
+          else None)
       ]
 ;;

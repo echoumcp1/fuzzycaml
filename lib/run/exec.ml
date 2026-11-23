@@ -11,6 +11,10 @@ let clean_env =
   |> Array.of_list
 ;;
 
+(* An 8MB stack, which a loop of a million calls overflows unless they are tail
+   calls. *)
+let run_env = Array.append clean_env [| "OCAMLRUNPARAM=l=1M" |]
+
 type exit =
   | Exited of int
   | Signaled of int
@@ -18,7 +22,7 @@ type exit =
   | Hung (* timed out where a backend of the same kind finished quickly *)
   | Out_of_memory
 
-let spawn ~dir argv =
+let spawn ?(env = clean_env) ~dir argv =
   let out = Filename.concat dir [%string "out%{Random.bits ()#Int}"] in
   let err = out ^ ".err" in
   let open_for_writing path = Unix.openfile path [ O_WRONLY; O_CREAT; O_TRUNC ] 0o644 in
@@ -28,7 +32,7 @@ let spawn ~dir argv =
     Unix.create_process_env
       (List.hd argv)
       (Array.of_list argv)
-      clean_env
+      env
       Unix.stdin
       out_fd
       err_fd
@@ -234,7 +238,7 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
          List.map2
            (fun (b, dir) status ->
               match status with
-              | Exited 0 -> Some (spawn ~dir (run b dir))
+              | Exited 0 -> Some (spawn ~env:run_env ~dir (run b dir))
               | _ -> None)
            (List.combine backends dirs)
            compiled
