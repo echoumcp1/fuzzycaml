@@ -68,8 +68,8 @@ let local_atomic ctx env ty expr =
   in
   let operations = String.concat "; " operations in
   [%string
-    "(let %{atomic} = Atomic.make %{expr env ty} in for %{loop_var} = 0 to (%{expr env \
-     Int} land 7) do %{operations} done; Atomic.get %{atomic})"]
+    "(let %{atomic} : %{ty#Ty} Atomic.t = Atomic.make %{expr env ty} in for %{loop_var} \
+     = 0 to (%{expr env Int} land 7) do %{operations} done; Atomic.get %{atomic})"]
 ;;
 
 (* A record with atomic fields (declared in the prelude), updated through
