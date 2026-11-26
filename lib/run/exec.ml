@@ -219,24 +219,29 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
          wait_all ~max_mb:2048 ~timeout:compile_timeout (List.map fst compiles)
        in
        (* A compile that times out or runs out of memory is a compiler bug when
-          another backend compiled the program quickly, and a program too big to
-          compile otherwise. *)
+          the same compiler compiled another backend's program quickly, and a
+          program too big to compile otherwise. The erased program is simplified
+          and compiled with few optimizations, so its speed says nothing about
+          the original and does not count here. *)
        let compiled =
-         let compiled_quickly =
+         let compiled_quickly b =
            List.exists2
-             (fun b (status, seconds) ->
-                (not (is_toplevel b))
+             (fun other (status, seconds) ->
+                (not (is_toplevel other))
+                && other.version <> Erased
+                && List.hd other.argv = List.hd b.argv
                 && status = Exited 0
                 && seconds < compile_timeout /. 10.)
              backends
              compiled
          in
-         List.map
-           (fun (status, _) ->
+         List.map2
+           (fun b (status, _) ->
               match status with
-              | Timeout when compiled_quickly -> Hung
-              | Out_of_memory when not compiled_quickly -> Timeout
+              | Timeout when compiled_quickly b -> Hung
+              | Out_of_memory when not (compiled_quickly b) -> Timeout
               | status -> status)
+           backends
            compiled
        in
        let runs =
