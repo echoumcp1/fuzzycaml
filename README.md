@@ -102,7 +102,7 @@ Each opam switch adds these backends:
 - With `--ox` (flambda2 switches only): `ocamlc`, `ocamlopt` at `-Oclassic`, the default level and `-O3`, and a toggles backend that draws an optimization level and a set of flags for each program.
 - Both add the toplevel, `ocaml`, which runs the program as a script.
 
-`ocamlc` and one native backend per switch use the debug runtime. `ocamlopt` runs with `-dcmm-invariants`, and flambda backends also with `-dflambda-invariants`. The first backend that compiles is the reference. A release `ocamlc` can be added as a second reference with `FUZZYCAML_EXTRA`; a mismatch against it alone may be a bug fixed in trunk.
+`ocamlc` and one native backend per switch use the debug runtime. Each program's toggles build also runs on the debug runtime with a 257-word minor heap, an eager major GC and heap verification. `ocamlopt` runs with `-dcmm-invariants`, and flambda backends also with `-dflambda-invariants`. The first backend that compiles is the reference. A release `ocamlc` can be added as a second reference with `FUZZYCAML_EXTRA`; a mismatch against it alone may be a bug fixed in trunk.
 
 Backends compile in parallel in separate temporary directories with `-w -a` and a cleaned environment. Compilation times out after 120 s and execution after 10 s. Programs that time out are discarded.
 

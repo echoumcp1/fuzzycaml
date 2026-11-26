@@ -134,6 +134,13 @@ let show_exit = function
   | Out_of_memory -> "used over 2GB while another backend compiled quickly"
 ;;
 
+(* What makes a backend's runs slow. *)
+type speed =
+  { bytecode : bool
+  ; debug_runtime : bool
+  ; verifies_heap : bool
+  }
+
 type result =
   | Compile_error of string
   | Ran of exit * string * string
@@ -266,11 +273,18 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
            (fun (b, run) -> Option.map (fun _ -> b) run)
            (List.combine backends runs)
        in
-       (* Bytecode and the debug runtime are much slower, so a timeout is compared
-          only with backends of the same kind. The toplevel also compiles as it
-          runs, so it is compared with none. *)
+       (* Bytecode, the debug runtime and heap verification are much slower, so a
+          timeout is compared only with backends of the same kind. The toplevel
+          also compiles as it runs, so it is compared with none. *)
        let kind b =
-         if is_toplevel b then None else Some (is_bytecode b, List.mem "d" b.argv)
+         if is_toplevel b
+         then None
+         else
+           Some
+             { bytecode = is_bytecode b
+             ; debug_runtime = List.mem "d" b.argv
+             ; verifies_heap = Text.contains b.heap "V=1"
+             }
        in
        let finished_quickly b =
          kind b <> None

@@ -70,7 +70,7 @@ type versions =
 
 (* In props mode, backends other than the toggles one are upstream compilers,
    which check only the erased version, without the modules they lack. *)
-let upstream b = !Config.props && not (Text.contains b.name "-toggles")
+let upstream b = !Config.props && not (toggles b)
 let ox_modules = [ "F32"; "I8"; "I16" ]
 
 let for_upstream source =
@@ -80,6 +80,17 @@ let for_upstream source =
   |> String.concat "\n"
 ;;
 
+(* The debug runtime asserts its invariants as it runs. With this heap it
+   collects every 257 words, keeps the major GC as eager as it can be, and
+   verifies the whole heap after each major cycle. *)
+let on_debug_runtime b =
+  { b with
+    name = b.name ^ " (debug runtime)"
+  ; argv = (if List.mem "d" b.argv then b.argv else b.argv @ [ "-runtime-variant"; "d" ])
+  ; heap = "s=257,o=1,V=1"
+  }
+;;
+
 (* Half the runs collect far more often: every 257 words of allocation in the
    minor heap, or with the major GC working as eagerly as it can. The toplevel
    is left out, since its compiler runs under the same settings. *)
@@ -87,7 +98,7 @@ let with_heaps tc backends =
   let heaps = [ "s=257"; "s=4k"; "s=257,o=1"; "o=1" ] in
   List.map
     (fun b ->
-       if is_toplevel b || not (Draw.bool tc)
+       if is_toplevel b || b.heap <> "" || not (Draw.bool tc)
        then b
        else { b with heap = List.nth heaps (Draw.int tc 0 (List.length heaps - 1)) })
     backends
@@ -98,6 +109,7 @@ let generate ~ox ~effect_syntax backends tc =
   let versions = { erased = ""; emi = ""; profiler = List.nth_opt backends 0 } in
   let backends = if ox then with_toggles tc backends else backends in
   let source = Program.program ~ox ~effect_syntax tc in
+  let debug_copies = List.map on_debug_runtime (List.filter toggles backends) in
   let backends =
     if !Config.props
     then (
@@ -115,11 +127,12 @@ let generate ~ox ~effect_syntax backends tc =
         else upstreams
       in
       backends
+      @ debug_copies
       @ List.map erasing backends
       @ List.map (compiling Erased) upstreams
       @ (if Markers.has_wrappers source then List.map (compiling Variant) backends else [])
       @ if Emi.has_regions source then List.map (compiling Emi) backends else [])
-    else backends
+    else backends @ debug_copies
   in
   with_heaps tc backends, source, versions
 ;;
@@ -308,6 +321,9 @@ let check_source ~ox tc backends source versions =
     !Config.props
     && List.exists (compile_error (fun msg -> not (crashed msg || timed_out msg))) results
   then reject ();
+  (* A hang is reported even when another run timed out. The debug runtime
+     copy of a hanging build only times out, since no other run of its kind
+     exists to compare it with. *)
   if
     List.exists
       (function
@@ -315,6 +331,12 @@ let check_source ~ox tc backends source versions =
         | Compile_error msg -> timed_out msg
         | Ran _ -> false)
       results
+    && not
+         (List.exists
+            (function
+              | Ran (Hung, _, _) -> true
+              | _ -> false)
+            results)
   then skip_timeout ();
   Option.iter skip_known (known_bug ~rerun backends results source);
   (* A crash is a failure even if all backends agree. *)

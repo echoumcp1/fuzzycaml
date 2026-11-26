@@ -364,7 +364,7 @@ let known_bug ~rerun backends results source =
             List.for_all
               (fun (b, result) ->
                  agrees result
-                 || (Text.contains b.name "-toggles"
+                 || (toggles b
                      && List.find_opt
                           (fun flag -> List.mem flag [ "-Oclassic"; "-O2"; "-O3"; "-O4" ])
                           (List.rev b.argv)

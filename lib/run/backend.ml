@@ -193,6 +193,7 @@ let effect_syntax ~ox backends =
 ;;
 
 let is_toplevel b = Filename.basename (List.hd b.argv) = "ocaml"
+let toggles b = Text.contains b.name "-toggles"
 
 let is_bytecode b =
   is_toplevel b
