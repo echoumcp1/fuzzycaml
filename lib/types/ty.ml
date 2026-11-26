@@ -12,9 +12,9 @@ type ty =
   | Pair of ty * ty
   | Arrow of ty * ty
   | Named of int
-  (* OxCaml only. Unboxed values (Unboxed, UTuple, Or_null and unboxed records)
-     are only bound, passed, returned or stored in a record, tuple or array that
-     allows them, never in a list, option or pair. *)
+  (* OxCaml only. List, Option and Pair never hold an unboxed type (Unboxed,
+     UTuple, Or_null or an unboxed record). A form that puts an unboxed value
+     in such a container spells the container's type itself. *)
   | Num of boxed_number
   | Unboxed of unboxed_number
   | UTuple of ty list

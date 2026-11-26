@@ -34,6 +34,11 @@ let rec printer = function
     if is_float t
     then [%string {|(fun (x : %{t#Ty}) -> show_float %{convert t Float "x"})|}]
     else [%string {|(fun (x : %{t#Ty}) -> Int64.to_string %{convert t Int64 "x"})|}]
+  | Or_null t ->
+    let null = Config.ox_syntax "Null" "None" in
+    let this = Config.ox_syntax "This" "Some" in
+    [%string
+      {|(function %{null} -> "Null" | %{this} v -> "This (" ^ %{printer t} v ^ ")")|}]
   | _ -> {|(fun _ -> "<unprintable>")|}
 ;;
 

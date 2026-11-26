@@ -26,6 +26,7 @@ let lets bindings =
 ;;
 
 let types bindings = List.map (fun binding -> binding.var, binding.var_ty) bindings
+let names bindings = List.map (fun binding -> binding.var) bindings
 
 (* Many ints and floats live across an opaque call, so some must be spilled. *)
 let pressure ctx env ty gen =
@@ -90,14 +91,10 @@ let many_args ctx env ty gen =
       params
   in
   let outer_lets = lets first_args in
-  let outer_args =
-    String.concat " " (first_count :: List.map (fun arg -> arg.var) first_args)
-  in
+  let outer_args = String.concat " " (first_count :: names first_args) in
   let inner_lets = lets inner_args in
   let recursive_args =
-    String.concat
-      " "
-      ([%string "(%{remaining} - 1)"] :: List.map (fun arg -> arg.var) inner_args)
+    String.concat " " ([%string "(%{remaining} - 1)"] :: names inner_args)
   in
   let head =
     choose ctx [ (fun () -> fn); (fun () -> [%string "(%{fn} [@inlined never])"]) ]

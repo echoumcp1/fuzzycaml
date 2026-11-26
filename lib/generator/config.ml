@@ -77,6 +77,7 @@ let all_features =
   ; "polyvariants"
   ; "letops"
   ; "marshal"
+  ; "layouts"
   ]
 ;;
 

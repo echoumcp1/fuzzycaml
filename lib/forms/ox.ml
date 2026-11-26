@@ -61,8 +61,8 @@ let unboxed_and_mutable ctx env ty gen =
     on "mutables"
     &&
     match ty with
-    | UTuple _ | Or_null _ -> false
-    | Named decl -> not !unboxed_record_decls.(decl)
+    | UTuple _ | Or_null _ -> on "layouts"
+    | Named decl -> on "layouts" || not !unboxed_record_decls.(decl)
     | _ -> true
   then
     [ (fun () ->

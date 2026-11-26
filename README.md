@@ -78,7 +78,7 @@ let v3 : (int * string) list = <expression>
 let () = print_endline (<printer for (int * string) list> v3)
 ```
 
-Types are `int`, `bool`, `float`, `char`, `int64`, `string`, lists, options, pairs, functions, arrays, and declared records and variants (including polymorphic variants). With `--ox` there are also `float32`, small and unboxed integers, `float#` and other unboxed numbers, unboxed tuples and records, and `or_null`.
+Types are `int`, `bool`, `float`, `char`, `int64`, `string`, lists, options, pairs, functions, arrays, and declared records and variants (including polymorphic variants). With `--ox` there are also `float32`, small and unboxed integers, `float#` and other unboxed numbers, unboxed tuples and records, and `or_null`. The `layouts` feature puts unboxed values under kind annotations, in lists, options and refs, and in top-level bindings.
 
 Each program enables a random subset of features, listed on its first line as `(* features: ... *)`. Disabled features are never generated, and enabled ones are weighted up. With the `modules` feature, the program is split at each `(* module boundary *)` line into modules compiled without `-opaque`, and the variant version stays one module.
 

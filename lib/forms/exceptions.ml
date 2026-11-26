@@ -32,7 +32,7 @@ let local_exn ctx env ty gen =
      %{should_raise_arg} %{payload_arg} with %{exn} %{payload} -> %{handler})"]
 ;;
 
-(* A ref cannot hold an unboxed value. *)
+(* Older OxCaml compilers have no ref of an unboxed value. *)
 let savable ctx =
   List.filter_map
     (fun (decl, fields) ->

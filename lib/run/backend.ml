@@ -200,17 +200,38 @@ let is_bytecode b =
   || String.starts_with ~prefix:"ocamlc" (Filename.basename (List.hd b.argv))
 ;;
 
-(* Library features newer compilers add, each with a program that uses it. *)
+(* Features newer compilers add, each with a program that uses it. *)
+type probe =
+  { feature : string
+  ; source : string
+  ; ox_syntax : bool
+  }
+
 let probes =
-  [ ( "atomic_loc"
-    , "type r = { mutable a : int [@atomic] }\n\
-       let f r = Atomic.Loc.fetch_and_add [%atomic.loc r.a] 1" )
-  ; "atomic_array", "let f () = Atomic.Array.fetch_and_add (Atomic.Array.make 4 0) 1 2"
-  ; "popcount", "let f x = Int.popcount x + Int.leading_zeros x + Int.trailing_zeros x"
+  [ { feature = "atomic_loc"
+    ; source =
+        "type r = { mutable a : int [@atomic] }\n\
+         let f r = Atomic.Loc.fetch_and_add [%atomic.loc r.a] 1"
+    ; ox_syntax = false
+    }
+  ; { feature = "atomic_array"
+    ; source = "let f () = Atomic.Array.fetch_and_add (Atomic.Array.make 4 0) 1 2"
+    ; ox_syntax = false
+    }
+  ; { feature = "popcount"
+    ; source = "let f x = Int.popcount x + Int.leading_zeros x + Int.trailing_zeros x"
+    ; ox_syntax = false
+    }
+  ; { feature = "unboxed_elements"
+    ; source = "let r = ref [ Some #1. ]\nlet f ?(o = #1.) () = o, 0"
+    ; ox_syntax = true
+    }
   ]
 ;;
 
-(* The probes that the ocamlc next to every backend's compiler accepts. *)
+(* The probes that the ocamlc next to every backend's compiler accepts. An
+   upstream compiler only builds erased programs, so it is not asked about
+   OxCaml syntax. *)
 let probe backends =
   let dir = Filename.temp_dir "fuzzycaml" "probe" in
   let file = Filename.concat dir "probe.ml" in
@@ -229,10 +250,16 @@ let probe backends =
          [ "-c"; "-w"; "-a"; "-o"; Filename.concat dir "probe.cmo"; file ])
     = 0
   in
+  let ox_bins = List.filter (compiles "let x = #1.") bins in
   let found =
     List.filter_map
-      (fun (name, source) ->
-         if List.for_all (compiles source) bins then Some name else None)
+      (fun probe ->
+         if
+           List.for_all
+             (compiles probe.source)
+             (if probe.ox_syntax then ox_bins else bins)
+         then Some probe.feature
+         else None)
       probes
   in
   ignore (Sys.command (Filename.quote_command "rm" [ "-rf"; dir ]));

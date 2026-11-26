@@ -338,12 +338,13 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     maybe_split ctx items;
     if flip ~p:0.4 ctx then update_a_global ();
     let escapes = on "escapes" && flip ctx in
+    let unboxed = flip ~p:(if ox && on "layouts" then 0.3 else 0.) ctx in
     let ty, rhs =
       gen.of_shape
         ~candidates:upcast_candidates
         ~p:0.5
         { !env with escapes }
-        (Any first_order_types)
+        (Any { first_order_types with unboxed })
     in
     let rhs =
       if escapes then [%string "(try %{rhs} with Exit -> %{literal ctx ty})"] else rhs

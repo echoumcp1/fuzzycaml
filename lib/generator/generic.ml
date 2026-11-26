@@ -431,6 +431,7 @@ let generic ctx env ty gen =
   @ field_reads env ty gen (indexed_decls ctx)
   @ array_reads ctx env ty gen
   @ Ox.forms ctx env ty gen
+  @ Layouts.forms ctx env ty gen
   @ gate env.in_try [ (fun () -> raise_at ctx ty) ]
   @ Locals.forms ctx env ty gen
   @ Partial.forms ctx env ty gen
