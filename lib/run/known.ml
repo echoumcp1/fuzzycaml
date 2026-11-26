@@ -49,7 +49,8 @@ let known_compile_crash msg =
    reject a field read from a constant in a branch that never runs, as when a
    lazy constant is forced. The heavy flambda invariants fail when a closure
    nested in a recursive function is lifted before the function it captures,
-   and when the binary join defines a variable twice. *)
+   when the binary join defines a variable twice, and when a match reads an
+   option that another module computed. *)
 let known_backend_crash b msg =
   let flagged flag text = List.mem flag b.argv && Text.contains msg text in
   match known_compile_crash msg with
@@ -77,6 +78,8 @@ let known_backend_crash b msg =
       flagged "-dflambda-heavy-invariants" "Cannot rebind"
       && Text.contains msg " in environment:"
     then Some "heavy invariants: variable defined twice by the binary join"
+    else if flagged "-dflambda-heavy-invariants" "is not earlier than all of its aliases"
+    then Some "heavy invariants: alias of a variable from another module"
     else None
 ;;
 
