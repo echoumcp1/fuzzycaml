@@ -1,7 +1,8 @@
 open Backend
 
 (* Flags that must not change a program's meaning, mostly off by default. The
-   toggles backend draws a few per program. *)
+   toggles backend draws a few per program. The DWARF check turns SSA validation
+   off, because that validation rejects correct code under OxCaml's own DWARF. *)
 let ox_toggles =
   [ "-cfg-merge-blocks"
   ; "-reorder-blocks-random 7"
@@ -53,8 +54,16 @@ let ox_toggles =
   ; "-g -gdwarf-may-alter-codegen -gdwarf-may-alter-codegen-experimental"
   ; "-flambda2-debug-concrete-types-only-on-canonicals"
   ; "-X flambda2-meet-strategy=hybrid"
+  ; "-cfg-eliminate-dead-code-validate"
+  ; "-no-ssa-validate -gdwarf-pedantic -g -gno-upstream-dwarf"
+  ; "-flambda2-kind-checks"
+  ; "-dflambda-heavy-invariants"
   ]
 ;;
+
+(* The heavy flambda invariants can take ten times as long as the compile they
+   check, so a timeout under them does not count as a hang. *)
+let slow_to_compile b = List.mem "-dflambda-heavy-invariants" b.argv
 
 (* Only drawn when the reaper runs, which they configure. *)
 let reaper_toggles =

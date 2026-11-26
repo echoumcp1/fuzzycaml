@@ -238,7 +238,7 @@ let run_all ?(source_for = Fun.const Fun.id) backends source =
          List.map2
            (fun b (status, _) ->
               match status with
-              | Timeout when compiled_quickly b -> Hung
+              | Timeout when compiled_quickly b && not (Toggles.slow_to_compile b) -> Hung
               | Out_of_memory when not (compiled_quickly b) -> Timeout
               | status -> status)
            backends

@@ -43,26 +43,40 @@ let known_compile_crash msg =
    inline fast path, with block layout on a block's coldness in a [@zero_alloc]
    function, and with the reaper on a match building an unboxed field inside an
    exception handler. -experimental-optimizations turns on SSA. With the n-way
-   join, a concrete type is given to a name that is not canonical. *)
+   join, a concrete type is given to a name that is not canonical.
+
+   Checks that are off by default fail on correct code too. The kind checks
+   reject a field read from a constant in a branch that never runs, as when a
+   lazy constant is forced. The heavy flambda invariants fail when a closure
+   nested in a recursive function is lifted before the function it captures,
+   and when the binary join defines a variable twice. *)
 let known_backend_crash b msg =
+  let flagged flag text = List.mem flag b.argv && Text.contains msg text in
   match known_compile_crash msg with
   | Some _ as found -> found
   | None ->
-    if
-      List.mem "-caml-apply-inline-fast-path" b.argv
-      && Text.contains msg "CFG comparison MISMATCH"
+    if flagged "-caml-apply-inline-fast-path" "CFG comparison MISMATCH"
     then Some "SSA validator with the caml_apply fast path"
-    else if
-      List.mem "-cfg-block-layout" b.argv && Text.contains msg "Block flags mismatch"
+    else if flagged "-cfg-block-layout" "Block flags mismatch"
     then Some "SSA validator with block layout"
     else if
-      (List.mem "-use-ssa" b.argv || List.mem "-experimental-optimizations" b.argv)
-      && Text.contains msg "Terminator dbg mismatch"
+      flagged "-use-ssa" "Terminator dbg mismatch"
+      || flagged "-experimental-optimizations" "Terminator dbg mismatch"
     then Some "Terminator dbg mismatch"
     else if
-      List.mem "-flambda2-debug-concrete-types-only-on-canonicals" b.argv
-      && Text.contains msg "which is not canonical"
+      flagged "-flambda2-debug-concrete-types-only-on-canonicals" "which is not canonical"
     then Some "concrete type on a name that is not canonical"
+    else if
+      flagged
+        "-flambda2-kind-checks"
+        "block approximation was expected in [Closure_conversion]"
+    then Some "kind check on a field read that never runs"
+    else if flagged "-dflambda-heavy-invariants" "has unbound local names"
+    then Some "heavy invariants: lifted closure before the function it captures"
+    else if
+      flagged "-dflambda-heavy-invariants" "Cannot rebind"
+      && Text.contains msg " in environment:"
+    then Some "heavy invariants: variable defined twice by the binary join"
     else None
 ;;
 
