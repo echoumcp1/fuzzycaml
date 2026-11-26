@@ -42,8 +42,8 @@ let known_compile_crash msg =
 (* The SSA validator reports mismatches on correct code: with the caml_apply
    inline fast path, with block layout on a block's coldness in a [@zero_alloc]
    function, and with the reaper on a match building an unboxed field inside an
-   exception handler. With the n-way join, a concrete type is given to a name
-   that is not canonical. *)
+   exception handler. -experimental-optimizations turns on SSA. With the n-way
+   join, a concrete type is given to a name that is not canonical. *)
 let known_backend_crash b msg =
   match known_compile_crash msg with
   | Some _ as found -> found
@@ -55,7 +55,9 @@ let known_backend_crash b msg =
     else if
       List.mem "-cfg-block-layout" b.argv && Text.contains msg "Block flags mismatch"
     then Some "SSA validator with block layout"
-    else if List.mem "-use-ssa" b.argv && Text.contains msg "Terminator dbg mismatch"
+    else if
+      (List.mem "-use-ssa" b.argv || List.mem "-experimental-optimizations" b.argv)
+      && Text.contains msg "Terminator dbg mismatch"
     then Some "Terminator dbg mismatch"
     else if
       List.mem "-flambda2-debug-concrete-types-only-on-canonicals" b.argv
