@@ -137,10 +137,14 @@ let generate ~ox ~effect_syntax backends tc =
   with_heaps tc backends, source, versions
 ;;
 
+(* The variant is compiled as one module, so that the split program is compared
+   with the whole one. *)
+let whole = Text.remove_all Program.module_boundary
+
 let version_source versions b source =
   match b.version with
   | Original -> if !Config.props then Markers.without_wrappers source else source
-  | Variant -> source
+  | Variant -> whole source
   | Erased -> versions.erased
   | Emi -> versions.emi
 ;;
@@ -363,7 +367,8 @@ let check ~ox ~effect_syntax backends tc =
   then (
     note tc (Markers.clean (Markers.without_wrappers source));
     note tc ("(* erased *)\n" ^ versions.erased);
-    if Markers.has_wrappers source then note tc ("(* variant *)\n" ^ Markers.clean source))
+    if Markers.has_wrappers source
+    then note tc ("(* variant *)\n" ^ Markers.clean (whole source)))
   else note tc source;
   let key = Digest.string (String.concat "\000" (source :: List.map display backends)) in
   if Hashtbl.length outcomes > 100_000 then Hashtbl.reset outcomes;

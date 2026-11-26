@@ -145,21 +145,31 @@ type result =
   | Compile_error of string
   | Ran of exit * string * string
 
-(* Splits a program at the boundary line into two modules. The second opens the
-   first, so code is inlined across modules. File names differ per backend. *)
+(* Splits a program at its boundary lines into modules. Each opens the ones
+   before it, and code is inlined across them. File names differ per backend. *)
 let modules ~index source =
   let suffix = if index = 0 then "" else [%string "_%{index#Int}"] in
-  let main = [%string "prog%{suffix}.ml"] in
   let boundary = Program.module_boundary in
-  match Text.find source boundary with
-  | None -> [ main, source ]
-  | Some i ->
-    let after_boundary = i + String.length boundary in
-    [ [%string "m1%{suffix}.ml"], String.sub source 0 i
-    ; ( main
-      , [%string "open M1%{suffix}\n"]
-        ^ String.sub source after_boundary (String.length source - after_boundary) )
-    ]
+  let rec split source =
+    match Text.find source boundary with
+    | None -> [ source ]
+    | Some i ->
+      let after_boundary = i + String.length boundary in
+      String.sub source 0 i
+      :: split (String.sub source after_boundary (String.length source - after_boundary))
+  in
+  let parts = split source in
+  let name position =
+    if position = List.length parts - 1 then "prog" else [%string "m%{position + 1#Int}"]
+  in
+  List.mapi
+    (fun position text ->
+       let opens =
+         List.init position (fun earlier ->
+           [%string "open %{String.capitalize_ascii (name earlier)}%{suffix}\n"])
+       in
+       [%string "%{name position}%{suffix}.ml"], String.concat "" opens ^ text)
+    parts
 ;;
 
 let run_all ?(source_for = Fun.const Fun.id) backends source =

@@ -80,7 +80,7 @@ let () = print_endline (<printer for (int * string) list> v3)
 
 Types are `int`, `bool`, `float`, `char`, `int64`, `string`, lists, options, pairs, functions, arrays, and declared records and variants (including polymorphic variants). With `--ox` there are also `float32`, small and unboxed integers, `float#` and other unboxed numbers, unboxed tuples and records, and `or_null`.
 
-Each program enables a random subset of features, listed on its first line as `(* features: ... *)`. Disabled features are never generated, and enabled ones are weighted up. With the `modules` feature, the program is split at `(* module boundary *)` into `m1.ml` and `prog.ml` and compiled without `-opaque`, so code is inlined across modules.
+Each program enables a random subset of features, listed on its first line as `(* features: ... *)`. Disabled features are never generated, and enabled ones are weighted up. With the `modules` feature, the program is split at each `(* module boundary *)` line into modules compiled without `-opaque`, and the variant version stays one module.
 
 The generator prefers variables that are not used yet, so that function parameters are not dead. Every choice is a Hegel draw and every expression is a span, so shrinking can remove features, flags and subexpressions and still produce a well-typed program.
 

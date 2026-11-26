@@ -119,10 +119,15 @@ let declare ctx items decl =
   index
 ;;
 
+let maybe_split ctx items =
+  if flip ~p:(if on "modules" then 0.3 else 0.) ctx then add_item items module_boundary
+;;
+
 let declare_types ctx items ~ox =
   let urecords = ox && on "urecords" in
   ignore
   @@ repeat ctx 0 4 (fun _ ->
+    maybe_split ctx items;
     (* Declared first, so the record below may hold it. *)
     if urecords && flip ~p:0.3 ctx
     then
@@ -328,13 +333,9 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
     | (child, _) :: _ -> [ Named child ]
     | [] -> []
   in
-  let split = ref (not (on "modules")) in
   ignore
   @@ repeat ctx 2 8 (fun _ ->
-    if flip ~p:(if !split then 0. else 0.3) ctx
-    then (
-      split := true;
-      add_item items module_boundary);
+    maybe_split ctx items;
     if flip ~p:0.4 ctx then update_a_global ();
     let escapes = on "escapes" && flip ctx in
     let ty, rhs =
@@ -356,7 +357,11 @@ let program ?(ox = false) ?(effect_syntax = false) tc =
   (* Interrupt callbacks allocate, and collecting ones may run finalizers that
      do, which a zero_alloc test would see. *)
   if !props && (not (on "interrupts")) && not collecting_callbacks
-  then ignore @@ repeat ctx 0 2 (fun _ -> add_item items (Zero_alloc.test ctx !env gen));
+  then
+    ignore
+    @@ repeat ctx 0 2 (fun _ ->
+      maybe_split ctx items;
+      add_item items (Zero_alloc.test ctx !env gen));
   if on "effargs" then add_item items "let () = print_endline (string_of_int !ticks)\n";
   if on "observe" then add_item items "let () = print_endline (string_of_int !obs)\n";
   head ^ conversion_definitions () ^ assemble (List.rev items.items)
